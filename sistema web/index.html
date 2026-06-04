@@ -700,25 +700,64 @@ function ph(title,sub,extra=''){return `<div class="page-head"><div><h2>${title}
 function renderOverview(v){
  const u=STATE.currentUser;const pr=effectiveProfile();
  const sectorLock=pr==='gestor';
+ // Estado da Visão Geral (período + setor). Gestor fica travado no próprio setor.
+ STATE.ov={period:'30d',sector:sectorLock?u.sector:null};
+ const kpi=(ic,grad,valId,label,trendId)=>`<div class="card metric"><div class="ic" style="background:${grad};color:#04121a"><i class="ti ${ic}"></i></div><div class="v" id="${valId}">…</div><div class="l">${label}</div><div class="trend" id="${trendId}"></div></div>`;
+ const mini=(ic,c,title,id)=>`<div class="card sm"><div class="flex ic-gap center"><i class="ti ${ic}" style="font-size:24px;color:${c}"></i><div><div class="muted" style="font-size:11px">${title}</div><div style="font-weight:600;font-size:14px" id="${id}">…</div><div class="muted" style="font-size:11px" id="${id}_sub"></div></div></div></div>`;
  v.innerHTML=`
  <div class="hero">
    <div class="flex center wrap" style="justify-content:space-between;gap:14px">
      <div><h1>Bem-vindo, ${u.nome.split(' ')[0]} 👋</h1><p>${STATE.currentUser.sector} · ${PROFILES[pr].name}${sectorLock?' · filtro travado no seu setor':''}</p></div>
-     <div class="seg">${['7d','30d','90d'].map((p,i)=>`<button class="${i==1?'on':''}" onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));this.classList.add('on');toast('Período: ${p}')">${p}</button>`).join('')}</div>
+     <div class="seg">${['7d','30d','90d'].map((p,i)=>`<button class="${i==1?'on':''}" onclick="setOverviewPeriod('${p}',this)">${p}</button>`).join('')}</div>
    </div>
-   ${(can('view_all'))?`<div class="mt16 flex ic-gap wrap"><span class="muted" style="font-size:12px">Filtrar setor:</span><select class="inp" style="width:auto" onchange="toast('Filtro: '+this.value)"><option>Todos os setores</option>${SECTORS.map(s=>`<option>${s.nome}</option>`).join('')}</select></div>`:`<div class="mt16"><span class="chip active"><i class="ti ti-lock"></i> Setor: ${u.sector}</span></div>`}
+   ${(can('view_all'))?`<div class="mt16 flex ic-gap wrap"><span class="muted" style="font-size:12px">Filtrar setor:</span><select class="inp" style="width:auto" onchange="setOverviewSector(this.value)"><option>Todos os setores</option>${SECTORS.map(s=>`<option>${s.nome}</option>`).join('')}</select></div>`:`<div class="mt16"><span class="chip active"><i class="ti ti-lock"></i> Setor: ${u.sector}</span></div>`}
  </div>
  <div class="grid g4">
-   ${metric('ti-ticket','var(--g1)','247','Chamados no período','+12% vs ant.','up')}
-   ${metric('ti-gauge','var(--g1)','91%','SLA cumprido','+3pts','up')}
-   ${metric('ti-robot','var(--g2)','83%','Resolvidos por IA','+6pts','up')}
-   ${metric('ti-bolt','var(--g1)','312','Execuções AD','+28','up')}
+   ${kpi('ti-ticket','var(--g1)','kpiChamados','Chamados no período','kpiChamadosTrend')}
+   ${kpi('ti-gauge','var(--g1)','kpiSla','SLA cumprido','kpiSlaTrend')}
+   ${kpi('ti-robot','var(--g2)','kpiIA','Resolvidos por IA','kpiIATrend')}
+   ${kpi('ti-bolt','var(--g1)','kpiAD','Execuções AD','kpiADTrend')}
  </div>
  <div class="grid g3 mt16">
-   ${miniCard('ti-user-off','var(--warn)','Próximo desligamento','Paulo Henrique (Obras) · matrícula 60112','detectado pelo SMARAPD há 6h')}
-   ${miniCard('ti-clock-pause','var(--err)','Conta mais inativa no AD','jsantos · 142 dias sem login','sugestão: revisar')}
-   ${miniCard('ti-alert-triangle','var(--a)','Último incidente','Chamado #4512 violou SLA','categoria Reset de senha')}
+   ${mini('ti-user-off','var(--warn)','Última desativação processada','ovDesativacao')}
+   ${mini('ti-bolt','var(--p)','Última execução no AD','ovExecAD')}
+   ${mini('ti-alert-triangle','var(--a)','Último incidente de SLA','ovIncidente')}
  </div>`;
+ loadOverview();
+}
+// ----- Visão Geral: carregamento de dados reais -----
+function setOverviewPeriod(p,btn){STATE.ov.period=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}loadOverview()}
+function setOverviewSector(val){STATE.ov.sector=(!val||val==='Todos os setores')?null:val;loadOverview()}
+function ovFmtAgo(iso){if(!iso)return'';const ms=Date.now()-new Date(iso).getTime();const m=Math.round(ms/60000);if(m<1)return'agora';if(m<60)return'há '+m+' min';const h=Math.round(m/60);if(h<24)return'há '+h+'h';const d=Math.round(h/24);return'há '+d+'d'}
+function ovSetVal(id,txt){const e=document.getElementById(id);if(e)e.textContent=txt}
+function ovSetTrend(id,pct){const e=document.getElementById(id);if(!e)return;if(pct==null){e.innerHTML='';e.className='trend';return}const up=pct>=0;e.className='trend '+(up?'up':'down');e.innerHTML=`<i class="ti ti-trending-${up?'up':'down'}"></i>${up?'+':''}${pct}% vs ant.`}
+async function loadOverview(){
+ const ov=STATE.ov||{period:'30d',sector:null};
+ const q=new URLSearchParams({period:ov.period});if(ov.sector)q.set('sector',ov.sector);
+ try{
+  const {ok,data}=await api('/api/overview?'+q.toString());
+  if(!ok)throw new Error('falha');
+  fillOverview(data);
+ }catch(e){fillOverviewError()}
+}
+function fillOverview(d){
+ const k=d.kpis;
+ ovSetVal('kpiChamados',k.chamados.value==null?'—':k.chamados.value);ovSetTrend('kpiChamadosTrend',k.chamados.trendPct);
+ ovSetVal('kpiSla',k.sla.value==null?'—':k.sla.value+'%');
+ ovSetVal('kpiIA',k.resolvidosIA.value==null?'—':k.resolvidosIA.value+'%');
+ ovSetVal('kpiAD',k.execucoesAD.value==null?'—':k.execucoesAD.value);ovSetTrend('kpiADTrend',k.execucoesAD.trendPct);
+ const x=d.destaques;
+ if(x.ultimaDesativacao){ovSetVal('ovDesativacao',(x.ultimaDesativacao.nome||'—')+(x.ultimaDesativacao.matricula?' · mat. '+x.ultimaDesativacao.matricula:''));ovSetVal('ovDesativacao_sub',ovFmtAgo(x.ultimaDesativacao.when))}
+ else{ovSetVal('ovDesativacao','Nenhuma no período');ovSetVal('ovDesativacao_sub','')}
+ if(x.ultimaExecucaoAD){ovSetVal('ovExecAD',x.ultimaExecucaoAD.titulo||'—');ovSetVal('ovExecAD_sub',ovFmtAgo(x.ultimaExecucaoAD.when))}
+ else{ovSetVal('ovExecAD','Nenhuma execução');ovSetVal('ovExecAD_sub','')}
+ if(x.ultimoIncidenteSLA){ovSetVal('ovIncidente','Chamado #'+x.ultimoIncidenteSLA.ticketId+' violou SLA');ovSetVal('ovIncidente_sub',x.ultimoIncidenteSLA.categoria||'')}
+ else{ovSetVal('ovIncidente','Sem incidentes de SLA');ovSetVal('ovIncidente_sub','')}
+}
+function fillOverviewError(){
+ ['kpiChamados','kpiSla','kpiIA','kpiAD'].forEach(id=>ovSetVal(id,'—'));
+ ['kpiChamadosTrend','kpiADTrend'].forEach(id=>ovSetTrend(id,null));
+ [['ovDesativacao','indisponível'],['ovExecAD','indisponível'],['ovIncidente','indisponível']].forEach(([id,t])=>{ovSetVal(id,t);ovSetVal(id+'_sub','')});
 }
 function metric(ic,grad,v,l,trend,dir){return `<div class="card metric"><div class="ic" style="background:${grad};color:#04121a"><i class="ti ${ic}"></i></div><div class="v">${v}</div><div class="l">${l}</div><div class="trend ${dir}"><i class="ti ti-trending-${dir==='up'?'up':'down'}"></i>${trend}</div></div>`}
 function miniCard(ic,c,t,m,s){return `<div class="card sm"><div class="flex ic-gap center"><i class="ti ${ic}" style="font-size:24px;color:${c}"></i><div><div class="muted" style="font-size:11px">${t}</div><div style="font-weight:600;font-size:14px">${m}</div><div class="muted" style="font-size:11px">${s}</div></div></div></div>`}
