@@ -13,6 +13,8 @@ import slaRoutes from './routes/sla.js';
 import liveRoutes from './routes/live.js';
 import conversasRoutes from './routes/conversas.js';
 import agenteRoutes from './routes/agente.js';
+import auditoriaRoutes from './routes/auditoria.js';
+import { startCollector } from './ad/collector.js';
 import { pgClose } from './db/postgres.js';
 import { glpiClose } from './db/mysql.js';
 
@@ -39,6 +41,7 @@ await app.register(slaRoutes);
 await app.register(liveRoutes);
 await app.register(conversasRoutes);
 await app.register(agenteRoutes);
+await app.register(auditoriaRoutes);
 
 // Front estático (index.html + imagens). Wildcard não conflita com /api/* (rotas exatas vencem).
 await app.register(fstatic, {
@@ -60,6 +63,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Central GLPI backend em http://${config.host}:${config.port} (estático: ${config.staticDir})`);
+  startCollector(app.log); // coletor de auditoria de AD (só roda se AD_SSH_HOST estiver definido)
 } catch (err) {
   app.log.error(err);
   process.exit(1);

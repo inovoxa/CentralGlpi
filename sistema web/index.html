@@ -715,8 +715,15 @@ function renderOverview(v){
    ${mini('ti-user-off','var(--warn)','Última desativação processada','ovDesativacao')}
    ${mini('ti-bolt','var(--p)','Última execução no AD','ovExecAD')}
    ${mini('ti-alert-triangle','var(--a)','Último incidente de SLA','ovIncidente')}
- </div>`;
+ </div>
+ ${can('view_audit')?`<div class="mt16">
+   <div class="page-head" style="margin:22px 0 6px"><div><h2 style="font-size:18px">Auditoria de Usuários · Monitoramento em tempo real</h2><p>Logons, bloqueios e eventos críticos do Active Directory</p></div>
+     <div class="search" style="flex:0 0 340px"><i class="ti ti-search"></i><input id="auditQ" placeholder="Buscar usuário ou máquina..." onkeydown="if(event.key==='Enter')auditBusca()"><select class="inp" id="auditTipo" style="width:auto;border:none;background:transparent"><option value="usuario">Usuário</option><option value="maquina">Máquina</option></select></div>
+   </div>
+   <div id="ovAudit"><div class="muted" style="padding:10px">Carregando auditoria…</div></div>
+ </div>`:''}`;
  loadOverview();
+ if(can('view_audit'))loadAuditoria();
 }
 // ----- Visão Geral: carregamento de dados reais -----
 function setOverviewPeriod(p,btn){STATE.ov.period=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}loadOverview()}
@@ -751,6 +758,70 @@ function fillOverviewError(){
  ['kpiChamados','kpiSla','kpiIA','kpiAD'].forEach(id=>ovSetVal(id,'—'));
  ['kpiChamadosTrend','kpiADTrend'].forEach(id=>ovSetTrend(id,null));
  [['ovDesativacao','indisponível'],['ovExecAD','indisponível'],['ovIncidente','indisponível']].forEach(([id,t])=>{ovSetVal(id,t);ovSetVal(id+'_sub','')});
+}
+// ----- Auditoria de AD (acréscimos na Visão Geral) -----
+function fmtDT(iso){if(!iso)return'—';const d=new Date(iso);const p=n=>String(n).padStart(2,'0');return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes())}
+async function loadAuditoria(){
+ let d=null;try{const r=await api('/api/auditoria/overview');if(r.ok)d=r.data;}catch(e){}
+ const el=document.getElementById('ovAudit');if(!el)return;
+ el.innerHTML=d?auditHtml(d):'<div class="muted" style="padding:10px">Auditoria indisponível</div>';
+}
+function audKpi(ic,c,val,label){return `<div class="card metric"><div class="ic" style="background:${c};color:#04121a"><i class="ti ${ic}"></i></div><div class="v">${val}</div><div class="l">${label}</div></div>`}
+function userLink(u){return `<span class="linklike" onclick="openUserProfile('${(u||'').replace(/'/g,'')}')">${u||'—'}</span>`}
+function auditHtml(d){
+ const L=d.logons,B=d.bloqueios,E=d.eventosCriticos;
+ const note=d.configured?'':'<div class="chip" style="margin-bottom:10px"><i class="ti ti-plug-connected-x"></i> Coletor de AD não configurado — sem dados ainda</div>';
+ const listOr=(arr,fn,vazio)=>arr&&arr.length?arr.map(fn).join(''):`<div class="muted" style="font-size:12px;padding:6px">${vazio}</div>`;
+ return note+`
+ <div class="grid g4">
+   ${audKpi('ti-login','var(--g1)',L.hoje,'Logons hoje')}
+   ${audKpi('ti-alert-triangle','var(--g2)',E.falhas24h,'Falhas de auth (24h)')}
+   ${audKpi('ti-lock','var(--g2)',B.total7d,'Bloqueios (7d)')}
+   ${audKpi('ti-shield-bolt','var(--g2)',E.bruteForce.length,'Alvos de brute force')}
+ </div>
+ <div class="grid g3 mt16">
+   <div class="card"><h4 class="mb12"><i class="ti ti-user-check"></i> Quem logou hoje</h4>${listOr(L.quemLogouHoje,u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="muted mono" style="font-size:11px">${fmtDT(u.ultimo)}</span></div>`,'Ninguém ainda')}</div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-history"></i> Últimos logons</h4>${listOr(L.ultimos,u=>`<div class="kv"><span>${userLink(u.usuario)} <span class="muted" style="font-size:11px">${u.computador||''}</span></span><span class="muted mono" style="font-size:11px">${ovFmtAgo(u.ocorrido_em)}</span></div>`,'Sem registros')}</div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-devices"></i> Logons simultâneos</h4>${listOr(L.simultaneos,u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="badge b-amber">${u.maquinas} máquinas</span></div>`,'Nenhum')}</div>
+ </div>
+ <div class="grid g2 mt16">
+   <div class="card"><h4 class="mb12"><i class="ti ti-lock-x"></i> Bloqueios recentes</h4>${listOr(B.recentes,b=>`<div class="kv"><span>${userLink(b.usuario)} <span class="muted" style="font-size:11px">origem: ${b.origem||'?'}</span></span><span class="muted mono" style="font-size:11px">${fmtDT(b.ocorrido_em)}</span></div>`,'Nenhum bloqueio')}</div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-shield-bolt"></i> Tentativas de brute force (1h)</h4>${listOr(E.bruteForce,b=>`<div class="kv"><span>${userLink(b.usuario)} <span class="muted" style="font-size:11px">${b.ip||''}</span></span><span class="badge b-red">${b.tentativas} tentativas</span></div>`,'Nada suspeito')}</div>
+ </div>`;
+}
+async function openUserProfile(login){
+ if(!login)return;modal('<div class="side-modal"><div class="empty"><i class="ti ti-loader-2"></i>Carregando perfil…</div></div>');
+ let d=null;try{const r=await api('/api/auditoria/usuario/'+encodeURIComponent(login));if(r.ok)d=r.data;}catch(e){}
+ if(!d){modal('<div class="side-modal"><div class="empty"><i class="ti ti-user-x"></i>Perfil indisponível</div></div>');return;}
+ const ad=d.ad||{},lo=d.local||{};const kv=(k,v)=>`<div class="kv"><span class="k">${k}</span><span>${v||'—'}</span></div>`;
+ const grupos=(ad.grupos&&ad.grupos.length)?ad.grupos.map(g=>`<span class="badge b-grey" style="margin:2px">${g}</span>`).join(''):'—';
+ const hist=(lo.historicoBloqueios&&lo.historicoBloqueios.length)?lo.historicoBloqueios.map(b=>`<div class="kv"><span class="muted">origem: ${b.origem||'?'}</span><span class="mono" style="font-size:11px">${fmtDT(b.ocorrido_em)}</span></div>`).join(''):'<div class="muted" style="font-size:12px">Sem bloqueios</div>';
+ modal(`<div class="side-modal">
+   <div class="mh"><div><div class="mono muted">${d.login}</div><h3>${ad.nome||d.login}</h3><div class="msub">${ad.cargo||''}${ad.departamento?' · '+ad.departamento:''}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+   ${ad.bloqueado?'<span class="badge b-red">Conta bloqueada</span> ':''}${ad.habilitado===false?'<span class="badge b-grey">Desabilitada</span>':''}
+   <div class="mt16">
+    ${kv('Login',d.login)}
+    ${kv('Departamento',ad.departamento)}
+    ${kv('Último logon',lo.ultimoLogon?fmtDT(lo.ultimoLogon.ocorrido_em):(ad.ultimo_logon_ad?fmtDT(ad.ultimo_logon_ad):'—'))}
+    ${kv('Computador utilizado',lo.ultimoLogon?lo.ultimoLogon.computador:'—')}
+    ${kv('Última troca de senha',ad.ultima_troca_senha?fmtDT(ad.ultima_troca_senha):'—')}
+    ${kv('Falhas de auth (7d)',lo.falhas7d!=null?lo.falhas7d:'—')}
+   </div>
+   <h4 class="mt16 mb12">Grupos</h4><div>${grupos}</div>
+   <h4 class="mt16 mb12">Histórico de bloqueios</h4>${hist}
+   ${d.adErro?`<div class="muted mt16" style="font-size:11px">Dados do AD ao vivo indisponíveis: ${d.adErro}</div>`:''}
+ </div>`);
+}
+async function auditBusca(){
+ const q=(document.getElementById('auditQ')||{}).value||'';const tipo=(document.getElementById('auditTipo')||{}).value||'usuario';
+ if(q.trim().length<2){toast('Digite ao menos 2 caracteres');return;}
+ let d=null;try{const r=await api('/api/auditoria/busca?tipo='+tipo+'&q='+encodeURIComponent(q.trim()));if(r.ok)d=r.data;}catch(e){}
+ const res=(d&&d.resultados)||[];
+ const body=res.length?(tipo==='usuario'
+   ?res.map(u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="muted mono" style="font-size:11px">${u.logons} logons · ${fmtDT(u.ultimo)}</span></div>`).join('')
+   :res.map(m=>`<div class="kv"><span>${m.computador} <span class="muted">${userLink(m.usuario)}</span></span><span class="muted mono" style="font-size:11px">${fmtDT(m.ocorrido_em)}</span></div>`).join(''))
+   :'<div class="empty"><i class="ti ti-search-off"></i>Nada encontrado</div>';
+ modal(`<div class="modal"><div class="mh"><h3>Busca: ${tipo} "${q}"</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div style="max-height:60vh;overflow:auto">${body}</div></div>`);
 }
 function metric(ic,grad,v,l,trend,dir){return `<div class="card metric"><div class="ic" style="background:${grad};color:#04121a"><i class="ti ${ic}"></i></div><div class="v">${v}</div><div class="l">${l}</div><div class="trend ${dir}"><i class="ti ti-trending-${dir==='up'?'up':'down'}"></i>${trend}</div></div>`}
 function miniCard(ic,c,t,m,s){return `<div class="card sm"><div class="flex ic-gap center"><i class="ti ${ic}" style="font-size:24px;color:${c}"></i><div><div class="muted" style="font-size:11px">${t}</div><div style="font-weight:600;font-size:14px">${m}</div><div class="muted" style="font-size:11px">${s}</div></div></div></div>`}

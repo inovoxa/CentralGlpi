@@ -80,6 +80,7 @@ export const config = {
     privateKeyPath: env.AD_SSH_PRIVATE_KEY_PATH || '',
     password: env.AD_SSH_PASSWORD || '',
     collectorCron: env.AD_COLLECTOR_CRON || '*/5 * * * *',
+    scriptPath: env.AD_SCRIPT_PATH || 'C:\\Scripts\\Coletar_Auditoria_AD.ps1',
   },
 };
 
