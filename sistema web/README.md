@@ -12,31 +12,36 @@ Acompanha, em um só lugar:
 - Integração **SMARAPD (RH)** para detecção de desligamentos
 - **PostgreSQL** como fonte de verdade (`chamados_log`)
 
-> ⚠️ Esta é a **interface de demonstração** (front-end). Toda a lógica é *client-side*
-> com dados em memória (mock) — não há back-end nem dados reais nesta versão.
+> ℹ️ A **autenticação já é real** (login + senha + TOTP), servida pelo backend Fastify em
+> `../backend`. As demais telas (dashboard, kanban, SLA, chamados, conversas, agente) ainda
+> usam dados *mock* e serão integradas ao GLPI/AD/Chatwoot nas próximas fases.
 
 ## Como executar
 
-É um único arquivo HTML autocontido. Basta abrir o `index.html` no navegador
-(ou servir a pasta):
+O front é servido **pelo backend** (ele expõe a API `/api/*` e o `index.html` na mesma origem).
+Não use mais `python -m http.server` — sem a API o login não funciona.
 
 ```bash
-# opção simples
-python -m http.server 8080
-# acesse http://localhost:8080
+cd ../backend
+cp .env.example .env   # configure JWT_SECRET, TOTP_ENC_KEY, PG_*
+npm install && npm run migrate && npm run seed
+npm start              # http://localhost:3000  (serve este index.html)
 ```
 
-Os arquivos `BrasaoAraraquara.png` e `Background_GLPI.jpeg` devem ficar na **mesma pasta**
-do `index.html`.
+Em produção, roda em container no Coolify (ver `../backend/README.md`).
+Os arquivos `BrasaoAraraquara.png` e `Background_GLPI.jpeg` ficam nesta pasta e são servidos junto.
 
-## Acessos de demonstração
+## Acesso (login real)
 
-Qualquer e-mail `@araraquara.sp.gov.br` + qualquer senha entra. Para demonstrar cada perfil,
-use os e-mails pré-cadastrados (senha livre):
+Os usuários são criados pelo `npm run seed` com uma **senha inicial** (impressa no console).
+No **primeiro acesso**, cada um escaneia o QR no **Google Authenticator** e confirma o código de
+6 dígitos; nos acessos seguintes, basta senha + código.
+
+Usuários do seed inicial:
 
 | E-mail | Perfil |
 |---|---|
-| `fabricio@araraquara.sp.gov.br` | Admin (padrão) |
+| `fabricio@araraquara.sp.gov.br` | Admin |
 | `admin@araraquara.sp.gov.br` | Admin |
 | `coordenador@araraquara.sp.gov.br` | Coordenador TI |
 | `tecnico@araraquara.sp.gov.br` | Técnico |
@@ -44,7 +49,7 @@ use os e-mails pré-cadastrados (senha livre):
 | `auditor@araraquara.sp.gov.br` | Auditor (somente leitura) |
 
 Dentro do sistema, use o menu do avatar → **"Visualizar como"** para alternar perfis e ver
-a interface se adaptar às permissões.
+a interface se adaptar às permissões (simulação de UI; as permissões reais vêm do servidor).
 
 ## Funcionalidades
 

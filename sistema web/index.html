@@ -247,24 +247,43 @@ select.inp{appearance:none;cursor:pointer}
     <img class="brasao" src="BrasaoAraraquara.png" alt="Brasão de Araraquara">
     <h1>Central GLPI</h1>
     <div class="sub">Prefeitura Municipal de Araraquara</div>
-    <div class="field">
-      <label>E-mail institucional</label>
-      <input id="lgEmail" class="inp" type="email" placeholder="usuario@araraquara.sp.gov.br" value="fabricio@araraquara.sp.gov.br">
-    </div>
-    <div class="field">
-      <label>Senha</label>
-      <div class="pwwrap">
-        <input id="lgPass" class="inp" type="password" placeholder="••••••••" value="demo">
-        <i class="ti ti-eye toggle" onclick="togglePw('lgPass',this)"></i>
+    <!-- Etapa 1: e-mail + senha -->
+    <div id="loginStep1">
+      <div class="field">
+        <label>E-mail institucional</label>
+        <input id="lgEmail" class="inp" type="email" autocomplete="username" placeholder="usuario@araraquara.sp.gov.br" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
+      <div class="field">
+        <label>Senha</label>
+        <div class="pwwrap">
+          <input id="lgPass" class="inp" type="password" autocomplete="current-password" placeholder="••••••••">
+          <i class="ti ti-eye toggle" onclick="togglePw('lgPass',this)"></i>
+        </div>
+      </div>
+      <div class="row-between" style="margin:4px 0 16px">
+        <label class="check"><input type="checkbox" id="lgKeep" checked> Manter conectado</label>
+        <a class="linkmut" style="margin:0" onclick="openForgot()">Esqueci minha senha</a>
+      </div>
+      <button class="btn btn-grad" id="lgBtn" onclick="doLogin()"><i class="ti ti-login-2"></i> Entrar</button>
+      <!-- Login via Active Directory: reservado para fase futura (LDAP). Oculto por ora. -->
+      <button class="btn btn-ghost hidden" onclick="doLogin(true)"><i class="ti ti-windows"></i> Entrar com Active Directory</button>
     </div>
-    <div class="row-between" style="margin:4px 0 16px">
-      <label class="check"><input type="checkbox" checked> Manter conectado</label>
-      <a class="linkmut" style="margin:0" onclick="openForgot()">Esqueci minha senha</a>
+
+    <!-- Etapa 2: verificação em duas etapas (TOTP / Google Authenticator) -->
+    <div id="loginStep2" class="hidden">
+      <div id="totpSetupBox" class="hidden" style="text-align:center;margin-bottom:14px">
+        <div class="muted" style="font-size:12.5px;margin-bottom:10px">Primeiro acesso: escaneie o QR no <b>Google Authenticator</b> (ou app compatível) e informe o código gerado.</div>
+        <img id="totpQr" alt="QR Code para autenticação" style="width:170px;height:170px;border-radius:12px;background:#fff;padding:8px">
+        <div class="muted" style="font-size:11px;margin-top:8px">Não consegue escanear? Chave manual:<br><span id="totpSecret" class="mono" style="font-size:11px;color:var(--lt);word-break:break-all"></span></div>
+      </div>
+      <div id="totpVerifyMsg" class="muted" style="font-size:12.5px;text-align:center;margin-bottom:10px"></div>
+      <div class="field">
+        <label>Código de verificação (6 dígitos)</label>
+        <input id="lgTotp" class="inp mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:6px;font-size:18px" onkeydown="if(event.key==='Enter')confirmTotp()">
+      </div>
+      <button class="btn btn-grad" id="lgTotpBtn" onclick="confirmTotp()"><i class="ti ti-shield-check"></i> Confirmar</button>
+      <a class="linkmut" onclick="backToLogin()">Voltar</a>
     </div>
-    <button class="btn btn-grad" onclick="doLogin()"><i class="ti ti-login-2"></i> Entrar</button>
-    <div class="divider">ou</div>
-    <button class="btn btn-ghost" onclick="doLogin(true)"><i class="ti ti-windows"></i> Entrar com Active Directory</button>
     <div id="lgErr" class="hidden" style="color:var(--err);font-size:12px;text-align:center;margin-top:12px"></div>
     <div class="login-foot">desenvolvido por<br><img src="https://essdtsmqcwonprcoxxdz.supabase.co/storage/v1/object/public/inovoxa/Sem%20nome%20(999%20x%20296%20px).png" alt="Inovoxa" style="height:26px;margin-top:6px;opacity:.95"></div>
   </div>
@@ -528,23 +547,96 @@ let CURRENT='overview';
 
 /* ===================== LOGIN LOGIC ===================== */
 function togglePw(id,el){const i=document.getElementById(id);if(i.type==='password'){i.type='text';el.className='ti ti-eye-off toggle'}else{i.type='password';el.className='ti ti-eye toggle'}}
-function doLogin(sso){
+// Wrapper de fetch para a API (mesma origem; cookie de sessão httpOnly vai junto).
+async function api(path,opts={}){
+ const res=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});
+ let data=null;try{data=await res.json()}catch{}
+ return {ok:res.ok,status:res.status,data:data||{}};
+}
+function lgError(msg){const e=document.getElementById('lgErr');if(!msg){e.classList.add('hidden');return}e.textContent=msg;e.classList.remove('hidden')}
+function showStep(n){document.getElementById('loginStep1').classList.toggle('hidden',n!==1);document.getElementById('loginStep2').classList.toggle('hidden',n!==2)}
+
+// Etapa 1: e-mail + senha → decide entre cadastrar TOTP (1º acesso) ou pedir o código.
+async function doLogin(sso){
+ if(sso){toast('Login via Active Directory disponível em breve');return}
+ lgError('');
  const email=document.getElementById('lgEmail').value.trim().toLowerCase();
- const err=document.getElementById('lgErr');
- if(STATE.blockedUntil&&Date.now()<STATE.blockedUntil){err.textContent='Conta bloqueada por 5 minutos após várias tentativas.';err.classList.remove('hidden');return}
- const valid=/^[^@\s]+@araraquara\.sp\.gov\.br$/.test(email);
- const known=STATE.users.find(u=>u.email===email);
- if(!valid){STATE.loginAttempts++;if(STATE.loginAttempts>=3){STATE.blockedUntil=Date.now()+300000;err.textContent='Conta bloqueada por 5 minutos após 3 tentativas.';}else{err.textContent='E-mail inválido. Use o domínio @araraquara.sp.gov.br ('+(3-STATE.loginAttempts)+' tentativas restantes).';}err.classList.remove('hidden');return}
- STATE.loginAttempts=0;err.classList.add('hidden');
- STATE.currentUser=known||{id:99,nome:email.split('@')[0],email,profile:'tecnico',sector:'TI',status:'ativo',primeiro_acesso:false};
+ const password=document.getElementById('lgPass').value;
+ if(!email||!password){lgError('Informe e-mail e senha.');return}
+ const btn=document.getElementById('lgBtn');btn.disabled=true;
+ try{
+  const {ok,data}=await api('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})});
+  if(!ok){
+   let m=data.error||'Falha no login.';
+   if(typeof data.attemptsLeft==='number')m+=` (${data.attemptsLeft} tentativa(s) restante(s))`;
+   lgError(m);return;
+  }
+  STATE.pendingEmail=email;
+  document.getElementById('lgTotp').value='';
+  if(data.step==='totp_setup'){await startTotpSetup()}
+  else{document.getElementById('totpSetupBox').classList.add('hidden');document.getElementById('totpVerifyMsg').textContent='Digite o código do seu app autenticador.';showStep(2);setTimeout(()=>document.getElementById('lgTotp').focus(),60)}
+ }catch(e){lgError('Não foi possível conectar ao servidor.')}
+ finally{btn.disabled=false}
+}
+
+// Etapa 2a (1º acesso): obtém segredo + QR do servidor.
+async function startTotpSetup(){
+ const {ok,data}=await api('/api/auth/totp/setup',{method:'POST'});
+ if(!ok){lgError(data.error||'Falha ao iniciar a verificação.');return}
+ document.getElementById('totpQr').src=data.qr;
+ document.getElementById('totpSecret').textContent=data.secret||'';
+ document.getElementById('totpSetupBox').classList.remove('hidden');
+ document.getElementById('totpVerifyMsg').textContent='';
+ showStep(2);setTimeout(()=>document.getElementById('lgTotp').focus(),60);
+}
+
+// Etapa 2b: confirma o código de 6 dígitos e entra.
+async function confirmTotp(){
+ lgError('');
+ const token=document.getElementById('lgTotp').value.trim();
+ if(token.length<6){lgError('Digite os 6 dígitos do código.');return}
+ const btn=document.getElementById('lgTotpBtn');btn.disabled=true;
+ try{
+  const {ok,data}=await api('/api/auth/totp/verify',{method:'POST',body:JSON.stringify({token})});
+  if(!ok){lgError(data.error||'Código inválido.');return}
+  await loadMeAndEnter(true);
+ }catch(e){lgError('Não foi possível conectar ao servidor.')}
+ finally{btn.disabled=false}
+}
+
+function backToLogin(){lgError('');showStep(1);document.getElementById('lgPass').value=''}
+
+// Carrega o usuário atual da sessão e entra no app.
+async function loadMeAndEnter(greet){
+ const {ok,data}=await api('/api/me');
+ if(!ok){lgError('Sessão inválida. Faça login novamente.');showStep(1);return false}
+ applyMe(data);enterApp(greet);return true;
+}
+
+// Sincroniza perfis/permissões com o servidor e popula o usuário atual.
+function applyMe(me){
+ if(me.rbac&&me.rbac.profiles)Object.assign(PROFILES,me.rbac.profiles);
+ const u=me.user;
+ STATE.currentUser={id:u.id,nome:u.nome,email:u.email,profile:u.profile,sector:u.sector,status:u.status,tel:u.tel,primeiro_acesso:u.primeiro_acesso};
  STATE.viewAs=null;
+}
+
+function enterApp(greet){
  document.getElementById('login').style.display='none';
  document.getElementById('app').style.display='flex';
+ showStep(1); // pronto para um próximo login
  buildShell();navigate('overview');startClock();startLive();
- if(STATE.currentUser.primeiro_acesso){setTimeout(openChangePass,400)}
- toast((sso?'Login via AD: ':'Bem-vindo, ')+STATE.currentUser.nome);
+ if(greet)toast('Bem-vindo, '+STATE.currentUser.nome);
 }
-function logout(){STATE.currentUser=null;STATE.viewAs=null;stopLive();document.getElementById('app').style.display='none';document.getElementById('login').style.display='flex';closeMenus()}
+
+async function logout(){
+ try{await api('/api/auth/logout',{method:'POST'})}catch(e){}
+ STATE.currentUser=null;STATE.viewAs=null;stopLive();
+ document.getElementById('app').style.display='none';
+ document.getElementById('login').style.display='flex';
+ document.getElementById('lgPass').value='';document.getElementById('lgTotp').value='';
+ showStep(1);lgError('');closeMenus();
+}
 
 /* ===================== SHELL ===================== */
 function buildShell(){
@@ -921,6 +1013,11 @@ function logOp(acao,delta){STATE.operationLogs.unshift({d:new Date(),user:STATE.
 function startClock(){const c=document.getElementById('clock');const t=new Date(NOW);setInterval(()=>{t.setSeconds(t.getSeconds()+1);c.textContent=fmtDate(t).split(' ')[1]+':'+pad(t.getSeconds())},1000);c.textContent=fmtDate(t).split(' ')[1]+':00'}
 
 document.getElementById('lgPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+/* Restaura uma sessão já existente ao abrir a página (cookie httpOnly ainda válido). */
+(async function initSession(){
+ try{const {ok,data}=await api('/api/me');if(ok){applyMe(data);enterApp(false);}}catch(e){}
+})();
 </script>
 </body>
 </html>
