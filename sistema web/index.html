@@ -899,39 +899,68 @@ function ticketAction(id,a){logOp(a.toLowerCase()+' chamado #'+id,'ação manual
 
 /* ===== CONVERSAS (estrela) ===== */
 let selectedConv=null;
-function convListForUser(){const pr=effectiveProfile();if(pr==='gestor')return STATE.conversations.filter(c=>c.sector.includes('Saúde')||c.sigla==='SAU');return STATE.conversations}
+function convListForUser(){return STATE.conversations||[]}
+async function loadConversas(){STATE.conversations=[];
+ try{const {ok,data}=await api('/api/conversas');if(ok){STATE.conversations=data.conversas||[];STATE.convConfigured=data.configured;return true}}catch(e){}
+ return false;
+}
+function emptyConv(){return STATE.convConfigured===false?'<div class="empty"><i class="ti ti-message-off"></i>Chatwoot não configurado<div class="mt8 muted">Defina CHATWOOT_URL/TOKEN/ACCOUNT_ID no backend</div></div>':'<div class="empty"><i class="ti ti-message-2"></i>Nenhuma conversa</div>'}
+function paintConvList(){const sc=document.getElementById('convScroller');if(!sc)return;const list=convListForUser();
+ sc.innerHTML=list.length?list.map(convItem).join(''):'<div class="muted" style="padding:14px">'+(STATE.convConfigured===false?'Chatwoot não configurado':'Nenhuma conversa')+'</div>';
+ const h=document.querySelector('.page-head p');if(h)h.textContent=list.length+' conversas'+(effectiveProfile()==='gestor'?' do seu setor':'');}
 function renderConversas(v){
- const list=convListForUser();selectedConv=selectedConv||list[0]?.id;
- v.innerHTML=ph('Histórico de conversas',list.length+' conversas'+(effectiveProfile()==='gestor'?' do seu setor':''))+
+ v.innerHTML=ph('Histórico de conversas','Carregando…')+
  `<div class="chatwrap">
    <div class="convlist">
      <div class="lh"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar na conversa..." oninput="filterConv(this.value)"></div>
        <div class="flex wrap" style="gap:5px;margin-top:9px">${['Todos','WhatsApp','Formulário','RH-auto','Com técnico'].map((c,i)=>`<span class="chip ${i==0?'active':''}" onclick="convChip(this,'${c}')">${c}</span>`).join('')}</div></div>
-     <div class="scroller" id="convScroller">${list.map(convItem).join('')}</div>
+     <div class="scroller" id="convScroller"><div class="muted" style="padding:14px">Carregando…</div></div>
    </div>
-   <div class="thread" id="thread">${threadHtml(list.find(c=>c.id===selectedConv))}</div>
+   <div class="thread" id="thread">${threadHtml(null)}</div>
  </div>`;
+ loadConversas().then(()=>{if(CURRENT!=='conversas')return;paintConvList();const list=convListForUser();
+   if(list.length)selectConv(list[0].id);else document.getElementById('thread').innerHTML=emptyConv();});
 }
 function convColor(sig){const map={SAU:'#3ddc97',TI:'#00D9C0',EDU:'#5B7FDE',FIN:'#FFB454',RH:'#E85D9A',JUR:'#9db4ff',OBR:'#FF9A6C',ADM:'#00D9C0'};return map[sig]||'#00D9C0'}
-function convItem(c){const last=c.msgs[c.msgs.length-1];const prev=last.audio?'🎤 Áudio':last.text.split('\n')[0].slice(0,46);
- return `<div class="convitem ${c.id===selectedConv?'sel':''}" data-id="${c.id}" data-s="${(c.nome+c.sector+c.msgs.map(m=>m.text).join(' ')).toLowerCase()}" data-canal="${c.canal}" data-hum="${c.humano}" onclick="selectConv(${c.id})">
+function convItem(c){const prev=c.preview||'';
+ return `<div class="convitem ${c.id===selectedConv?'sel':''}" data-id="${c.id}" data-s="${(c.nome+' '+c.sector+' '+prev).toLowerCase()}" data-canal="${c.canal}" data-hum="${c.humano}" onclick="selectConv(${c.id})">
   <div class="cav" style="background:${convColor(c.sigla)}">${initials(c.nome)}</div>
   <div class="cmain"><div class="crow"><span class="cname">${c.nome}</span><span class="ctime">${c.rel}</span></div>
    <div class="csec">${c.sector}</div><div class="cprev">${prev}</div>
-   <div class="ctags">${c.ticket?`<span class="badge b-teal">#${c.ticket}</span>`:`<span class="badge b-grey">sem ticket</span>`}<i class="ti ${CHICON[c.canal]}" style="font-size:13px;color:var(--mut)"></i>${c.humano?'<i class="ti ti-user-check" style="font-size:13px;color:var(--a)" title="Intervenção humana"></i>':''}${c.audio?'<i class="ti ti-microphone" style="font-size:13px;color:var(--mut)"></i>':''}</div>
+   <div class="ctags">${c.ticket?`<span class="badge b-teal">#${c.ticket}</span>`:`<span class="badge b-grey">sem ticket</span>`}<i class="ti ${CHICON[c.canal]||'ti-brand-whatsapp'}" style="font-size:13px;color:var(--mut)"></i>${c.humano?'<i class="ti ti-user-check" style="font-size:13px;color:var(--a)" title="Intervenção humana"></i>':''}${c.audio?'<i class="ti ti-microphone" style="font-size:13px;color:var(--mut)"></i>':''}</div>
   </div></div>`}
-function selectConv(id){selectedConv=id;document.querySelectorAll('.convitem').forEach(x=>x.classList.toggle('sel',+x.dataset.id===id));
- const c=STATE.conversations.find(x=>x.id===id);document.getElementById('thread').innerHTML=threadHtml(c);}
+async function selectConv(id){selectedConv=id;document.querySelectorAll('.convitem').forEach(x=>x.classList.toggle('sel',+x.dataset.id===id));
+ const c=convListForUser().find(x=>x.id===id);if(!c)return;
+ const th=document.getElementById('thread');
+ if(!c.msgs){th.innerHTML='<div class="empty"><i class="ti ti-loader-2"></i>Carregando conversa…</div>';
+   try{const {ok,data}=await api('/api/conversas/'+id);c.msgs=ok?(data.msgs||[]):[];}catch(e){c.msgs=[];}}
+ if(selectedConv===id)document.getElementById('thread').innerHTML=threadHtml(c);}
+async function sendConvMessage(id){const inp=document.getElementById('convInput');if(!inp)return;const content=inp.value.trim();if(!content)return;inp.disabled=true;
+ const mk=()=>({from:'tec',name:STATE.currentUser.nome,text:content,time:new Date().toTimeString().slice(0,5)});
+ try{const {ok,data}=await api('/api/conversas/'+id+'/mensagens',{method:'POST',body:JSON.stringify({content})});
+   if(!ok)throw new Error((data&&data.error)||'falha');
+   const c=convListForUser().find(x=>x.id===id);if(c){c.msgs=c.msgs||[];c.msgs.push(mk());}
+   const m=document.querySelector('#thread .msgs');if(m){if(m.querySelector('.empty'))m.innerHTML='';m.insertAdjacentHTML('beforeend',bubble(mk()));m.scrollTop=m.scrollHeight;}
+   inp.value='';toast('Mensagem enviada');
+ }catch(e){toast('Não foi possível enviar'+(e.message?': '+e.message:''))}
+ finally{inp.disabled=false;inp.focus()}}
+async function assumeConv(id){
+ try{const {ok,data}=await api('/api/conversas/'+id+'/assumir',{method:'POST'});
+   if(!ok)throw new Error((data&&data.error)||'falha');
+   const c=convListForUser().find(x=>x.id===id);if(c)c.humano=true;
+   if(selectedConv===id)document.getElementById('thread').innerHTML=threadHtml(c);
+   paintConvList();toast('Conversa assumida');
+ }catch(e){toast('Não foi possível assumir'+(e.message?': '+e.message:''))}}
 function filterConv(q){q=q.toLowerCase();document.querySelectorAll('.convitem').forEach(x=>x.style.display=(!q||x.dataset.s.includes(q))?'':'none')}
 function convChip(el,c){el.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));el.classList.add('active');
  document.querySelectorAll('.convitem').forEach(x=>{let show=true;if(c==='Com técnico')show=x.dataset.hum==='true';else if(c!=='Todos')show=x.dataset.canal===c;x.style.display=show?'':'none'})}
 function threadHtml(c){if(!c)return '<div class="empty"><i class="ti ti-message-2"></i>Selecione uma conversa</div>';
- const ro=effectiveProfile()==='auditor';
+ const ro=effectiveProfile()==='auditor';const msgs=c.msgs||[];
  return `<div class="th"><div><div style="font-weight:600;font-size:15px">${c.nome}</div><div class="muted" style="font-size:12px">${c.sector} · ${c.canal} ${c.ticket?`· <span class="linklike" onclick="openTicket(${c.ticket})">#${c.ticket}</span>`:''}</div>
-   <div class="flex wrap mt8" style="gap:6px">${c.ticket?`<span class="badge ${STBADGE[STATE.tickets.find(t=>t.id===c.ticket)?.status||'resolvido']}">${STLABEL[STATE.tickets.find(t=>t.id===c.ticket)?.status||'resolvido']}</span>`:''}<span class="badge ${c.humano?'b-pink':'b-teal'}">${c.humano?'Técnico ativo':'Agente IA'}</span></div></div>
-   <div class="flex ic-gap">${!ro&&can('assume')?`<button class="btn btn-line btn-sm" onclick="toast('Conversa assumida por '+STATE.currentUser.nome.split(' ')[0])"><i class="ti ti-hand-grab"></i> Assumir</button>`:''}${!ro?`<button class="btn btn-line btn-sm" onclick="toast('Atendimento encerrado (simulado)')"><i class="ti ti-circle-x"></i></button>`:''}</div></div>
-  <div class="msgs">${c.msgs.map(bubble).join('')}</div>
-  <div class="composer">${ro?'<span class="muted" style="margin:auto">Modo somente leitura — Auditor não pode responder</span>':`<input placeholder="Digite uma mensagem..." onkeydown="if(event.key==='Enter'&&this.value){toast('Mensagem enviada (simulado)');this.value=''}"><button class="iconbtn" style="background:var(--g1);color:#04121a" onclick="toast('Mensagem enviada (simulado)')"><i class="ti ti-send"></i></button>`}</div>`}
+   <div class="flex wrap mt8" style="gap:6px"><span class="badge ${c.humano?'b-pink':'b-teal'}">${c.humano?'Técnico ativo':'Agente IA'}</span></div></div>
+   <div class="flex ic-gap">${!ro&&can('assume')?`<button class="btn btn-line btn-sm" onclick="assumeConv(${c.id})"><i class="ti ti-hand-grab"></i> Assumir</button>`:''}</div></div>
+  <div class="msgs">${msgs.length?msgs.map(bubble).join(''):'<div class="empty"><i class="ti ti-message"></i>Sem mensagens</div>'}</div>
+  <div class="composer">${ro||!can('send_msg')?`<span class="muted" style="margin:auto">${ro?'Modo somente leitura — Auditor não pode responder':'Sem permissão para responder'}</span>`:`<input id="convInput" placeholder="Digite uma mensagem..." onkeydown="if(event.key==='Enter'&&this.value.trim())sendConvMessage(${c.id})"><button class="iconbtn" style="background:var(--g1);color:#04121a" onclick="sendConvMessage(${c.id})"><i class="ti ti-send"></i></button>`}</div>`}
 function bubble(m){
  if(m.from==='sys'){const cmap={teal:'b-teal',blue:'b-blue',grad:'b-teal',pink:'b-pink',amber:'b-amber'};return `<div class="sysmsg ${cmap[m.color]||'b-grey'}" ${m.color==='grad'?'style="background:linear-gradient(135deg,rgba(0,217,192,.18),rgba(91,127,222,.18));color:#bff7ee"':''}>${m.text} · <span class="mono" style="opacity:.7">${m.time}</span></div>`}
  let cls=m.from==='user'?'b-user':m.from==='ai'?'b-ai':'b-tec';
