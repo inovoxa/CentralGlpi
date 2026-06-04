@@ -620,7 +620,7 @@ function enterApp(greet){
  document.getElementById('login').style.display='none';
  document.getElementById('app').style.display='flex';
  showStep(1); // pronto para um próximo login
- buildShell();navigate('overview');startClock();startLive();
+ buildShell();navigate('overview');startClock();startLive();loadNotifs();
  if(greet)toast('Bem-vindo, '+STATE.currentUser.nome);
 }
 
@@ -661,17 +661,23 @@ function toggleAvatar(){closeMenus('avatarMenu');const m=document.getElementById
  const u=STATE.currentUser;
  m.innerHTML=`<div style="padding:10px 11px;border-bottom:1px solid var(--brd);margin-bottom:6px"><div style="font-weight:600">${u.nome}</div><div class="muted" style="font-size:12px">${u.email}</div><span class="badge b-teal mt8">${PROFILES[u.profile].name}</span></div>
  <div class="navi" onclick="navigate('myprofile');closeMenus()"><i class="ti ti-user"></i><span>Meu perfil</span></div>
- <div class="navi" onclick="toggleViewAsSub()"><i class="ti ti-eye"></i><span>Visualizar como ▾</span></div>
- <div id="viewasSub" class="hidden" style="padding-left:8px">${Object.keys(PROFILES).map(p=>`<div class="navi" onclick="setViewAs('${p}')"><i class="ti ti-point"></i><span>${PROFILES[p].name}</span></div>`).join('')}</div>
+ ${STATE.currentUser.profile==='admin'?`<div class="navi" onclick="toggleViewAsSub()"><i class="ti ti-eye"></i><span>Visualizar como ▾</span></div>
+ <div id="viewasSub" class="hidden" style="padding-left:8px">${Object.keys(PROFILES).map(p=>`<div class="navi" onclick="setViewAs('${p}')"><i class="ti ti-point"></i><span>${PROFILES[p].name}</span></div>`).join('')}</div>`:''}
  ${can('config')?'<div class="navi" onclick="navigate(\'config\');closeMenus()"><i class="ti ti-settings"></i><span>Configurações</span></div>':''}
  <div class="navi" onclick="logout()" style="color:var(--err)"><i class="ti ti-logout"></i><span>Sair</span></div>`;
 }
 function toggleViewAsSub(){document.getElementById('viewasSub').classList.toggle('hidden')}
 function setViewAs(p){STATE.viewAs=p;closeMenus();buildShell();navigate('overview');toast(p?'Visualizando como '+PROFILES[p].name:'Voltou ao seu perfil')}
+function notifColor(c){return {red:'var(--err)',amber:'var(--warn)',blue:'var(--s)',teal:'var(--p)',pink:'var(--a)'}[c]||'var(--p)'}
+function renderNotifList(){const items=STATE.notifs||[];return '<div style="padding:8px 10px;font-weight:600;border-bottom:1px solid var(--brd);margin-bottom:4px">Notificações</div>'+(items.length?items.map(n=>`<div class="navi"><i class="ti ${n.icon}" style="color:${notifColor(n.color)}"></i><span style="white-space:normal;font-size:12.5px">${n.text}${n.when?` <span class="muted">· ${ovFmtAgo(n.when)}</span>`:''}</span></div>`).join(''):'<div class="muted" style="padding:8px 10px;font-size:12px">Nada novo</div>')}
+async function loadNotifs(){
+ let d=null;try{const r=await api('/api/notificacoes');if(r.ok)d=r.data;}catch(e){}
+ STATE.notifs=d?d.items:[];const nc=document.getElementById('notifCount');
+ if(nc){const n=d?d.count:0;nc.textContent=Math.min(99,n);nc.style.display=n?'':'none';}
+}
 function toggleNotif(){closeMenus('notifMenu');const m=document.getElementById('notifMenu');m.classList.toggle('hidden');if(m.classList.contains('hidden'))return;
- m.innerHTML=`<div style="padding:8px 10px;font-weight:600;border-bottom:1px solid var(--brd);margin-bottom:4px">Notificações</div>`+
- [['ti-alert-triangle','red','Chamado #4512 violou o SLA'],['ti-user-off','amber','Desligamento detectado: matrícula 60112'],['ti-checks','blue','Chamado #4521 aprovado'],['ti-bolt','teal','Execução AD concluída (#4519)'],['ti-message','pink','Lucas assumiu a conversa #4505']]
- .map(n=>`<div class="navi"><i class="ti ${n[0]}" style="color:var(--${n[1]==='red'?'err':n[1]==='amber'?'warn':n[1]==='blue'?'s':n[1]==='pink'?'a':'p'})"></i><span style="white-space:normal;font-size:12.5px">${n[2]}</span></div>`).join('');
+ m.innerHTML=renderNotifList();
+ loadNotifs().then(()=>{if(!document.getElementById('notifMenu').classList.contains('hidden'))m.innerHTML=renderNotifList();});
 }
 function closeMenus(except){['avatarMenu','notifMenu'].forEach(id=>{if(id!==except)document.getElementById(id).classList.add('hidden')})}
 document.addEventListener('click',e=>{if(!e.target.closest('.iconbtn')&&!e.target.closest('#avatar')&&!e.target.closest('#avatarMenu')&&!e.target.closest('#notifMenu'))closeMenus()});
@@ -913,8 +919,8 @@ async function loadLive(initial){
  const f=document.getElementById('feed');if(!f)return;
  if(initial){STATE.liveSeen=new Set(evs.map(e=>e.id));f.innerHTML=evs.length?evs.map(feedItem).join(''):'<div class="empty"><i class="ti ti-activity"></i>Sem atividade recente</div>';return}
  const novos=evs.filter(e=>!STATE.liveSeen.has(e.id));
- novos.reverse().forEach(e=>{STATE.liveSeen.add(e.id);if(f.querySelector('.empty'))f.innerHTML='';f.insertAdjacentHTML('afterbegin',feedItem(e));f.firstElementChild.style.animation='slidein .4s ease';
-  const nc=document.getElementById('notifCount');if(nc)nc.textContent=Math.min(99,+nc.textContent+1)});
+ novos.reverse().forEach(e=>{STATE.liveSeen.add(e.id);if(f.querySelector('.empty'))f.innerHTML='';f.insertAdjacentHTML('afterbegin',feedItem(e));f.firstElementChild.style.animation='slidein .4s ease'});
+ if(novos.length)loadNotifs();
 }
 function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementById('pauseBtn');if(b)b.innerHTML=STATE.paused?'<i class="ti ti-player-play"></i> Retomar':'<i class="ti ti-player-pause"></i> Pausar'}
 function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;if(CURRENT==='live')loadLive(false)},12000)}

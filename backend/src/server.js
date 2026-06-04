@@ -15,6 +15,7 @@ import conversasRoutes from './routes/conversas.js';
 import agenteRoutes from './routes/agente.js';
 import auditoriaRoutes from './routes/auditoria.js';
 import adminRoutes from './routes/admin.js';
+import notificacoesRoutes from './routes/notificacoes.js';
 import { startCollector } from './ad/collector.js';
 import { pgClose } from './db/postgres.js';
 import { glpiClose } from './db/mysql.js';
@@ -50,6 +51,7 @@ await app.register(conversasRoutes);
 await app.register(agenteRoutes);
 await app.register(auditoriaRoutes);
 await app.register(adminRoutes);
+await app.register(notificacoesRoutes);
 
 // Front estático (index.html + imagens). Wildcard não conflita com /api/* (rotas exatas vencem).
 await app.register(fstatic, {
