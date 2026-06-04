@@ -11,6 +11,8 @@ services:
   central-glpi:
     # Coolify exige um 'image' mesmo com build (builda e marca com este nome).
     image: central-glpi:latest
+    # Sempre buildar a partir do source (evita 'pull access denied' tentando baixar de registry).
+    pull_policy: build
     build:
       context: .
       dockerfile: backend/Dockerfile
