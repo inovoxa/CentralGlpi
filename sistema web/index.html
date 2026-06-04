@@ -378,14 +378,7 @@ function relTime(d){const m=Math.round((NOW-d)/60000);if(m<1)return'agora';if(m<
 const STATE={currentUser:null,viewAs:null,loginAttempts:0,users:USERS,sectors:SECTORS,
  tickets:[],conversations:[],events:[],accessLogs:[],operationLogs:[],liveTimer:null,paused:false};
 
-// tickets
-(function(){const sl=['#f',2]; for(let i=0;i<54;i++){
-  const d=new Date(NOW-Math.floor(Math.random()*86400000*18));
-  const st=rnd(STATUSES); const sec=rnd(SECTORS);
-  STATE.tickets.push({id:4560-i,sol:rnd(NAMES),sector:sec.nome,sigla:sec.sigla,cat:rnd(CATS),
-   canal:rnd(CHANNELS),status:st,sla:Math.floor(Math.random()*100),assignee:Math.random()>.4?rnd(['Lucas Teixeira','Rafael Lima','—']):'—',
-   prio:rnd(['Baixa','Média','Alta','Crítica']),aberto:d});
-}})();
+// tickets agora vêm do GLPI via /api/tickets (loadTickets). STATE.tickets começa vazio.
 // conversations (12, full)
 function mkc(id,nome,sector,sigla,canal,rel,ticket,humano,audio,msgs){return{id,nome,sector,sigla,canal,rel,ticket,humano,audio,msgs}}
 const M=(from,text,time,extra={})=>({from,text,time,...extra});
@@ -763,25 +756,43 @@ function metric(ic,grad,v,l,trend,dir){return `<div class="card metric"><div cla
 function miniCard(ic,c,t,m,s){return `<div class="card sm"><div class="flex ic-gap center"><i class="ti ${ic}" style="font-size:24px;color:${c}"></i><div><div class="muted" style="font-size:11px">${t}</div><div style="font-weight:600;font-size:14px">${m}</div><div class="muted" style="font-size:11px">${s}</div></div></div></div>`}
 
 function ticketsForUser(){const pr=effectiveProfile();if(pr==='gestor'){return STATE.tickets.filter(t=>t.sector===STATE.currentUser.sector)}return STATE.tickets}
+// Busca os chamados do GLPI (via API) para STATE.tickets. Retorna true se ok.
+async function loadTickets(){
+ try{const {ok,data}=await api('/api/tickets');if(ok){STATE.tickets=data.tickets||[];return true;}}catch(e){}
+ STATE.tickets=STATE.tickets||[];return false;
+}
 function renderKanban(v){
- const cols=[['aberto','Aberto'],['aguardando_aprovacao','Aguardando aprovação'],['em_execucao','Em execução'],['resolvido','Resolvido'],['violou_sla','Violou SLA']];
- const data=ticketsForUser();
  v.innerHTML=ph('Kanban','Arraste os cards entre as colunas'+(effectiveProfile()==='gestor'?' · mostrando só seu setor':''),
    `<div class="search" style="flex:0 0 240px"><i class="ti ti-search"></i><input placeholder="Buscar chamado..." oninput="filterKanban(this.value)"></div>`)+
- `<div class="kanban" id="kanban">${cols.map(c=>`
+ `<div class="kanban" id="kanban"><div class="empty" style="grid-column:1/-1"><i class="ti ti-loader-2"></i>Carregando chamados…</div></div>`;
+ loadTickets().then(()=>{if(CURRENT==='kanban')paintKanban()});
+}
+function paintKanban(){
+ const cols=[['aberto','Aberto'],['aguardando_aprovacao','Aguardando aprovação'],['em_execucao','Em execução'],['resolvido','Resolvido'],['violou_sla','Violou SLA']];
+ const data=ticketsForUser();const el=document.getElementById('kanban');if(!el)return;
+ el.innerHTML=cols.map(c=>`
    <div class="kcol" data-st="${c[0]}" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="dropCard(event,'${c[0]}')">
      <h4>${c[1]} <span class="badge b-grey">${data.filter(t=>t.status===c[0]).length}</span></h4>
-     ${data.filter(t=>t.status===c[0]).map(kcard).join('')}
-   </div>`).join('')}</div>`;
+     ${data.filter(t=>t.status===c[0]).map(kcard).join('')||'<div class="muted" style="font-size:11px;padding:6px 3px">—</div>'}
+   </div>`).join('');
 }
-function slaColor(s){return s>60?'var(--ok)':s>30?'var(--warn)':'var(--err)'}
+function slaColor(s){if(s==null)return'var(--mut)';return s>60?'var(--ok)':s>30?'var(--warn)':'var(--err)'}
 function kcard(t){return `<div class="kcard" draggable="${can('move_kanban')}" data-id="${t.id}" ondragstart="event.dataTransfer.setData('id','${t.id}')" onclick="openTicket(${t.id})">
   <div class="slabar" style="background:${slaColor(t.sla)}"></div>
   <div class="kid mono">#${t.id}</div><div class="kt">${t.cat}</div>
-  <div class="kmeta"><i class="ti ${CHICON[t.canal]}"></i> ${t.sigla} · ${relTime(t.aberto)} · <span class="badge b-grey">${t.prio}</span></div></div>`}
-function dropCard(e,st){e.preventDefault();document.querySelectorAll('.kcol').forEach(c=>c.classList.remove('drag'));
+  <div class="kmeta"><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.sigla} · ${t.abertoRel} · <span class="badge b-grey">${t.prio}</span></div></div>`}
+async function dropCard(e,st){e.preventDefault();document.querySelectorAll('.kcol').forEach(c=>c.classList.remove('drag'));
  if(!can('move_kanban')){toast('Seu perfil não pode mover cards');return}
- const id=+e.dataTransfer.getData('id');const t=STATE.tickets.find(x=>x.id===id);if(t){const old=t.status;t.status=st;logOp('alterou status do chamado #'+id,STLABEL[old]+' → '+STLABEL[st]);renderKanban(document.getElementById('view'));toast('Chamado #'+id+' → '+STLABEL[st])}}
+ const id=+e.dataTransfer.getData('id');const t=STATE.tickets.find(x=>x.id===id);if(!t)return;
+ if(st==='violou_sla'){toast('“Violou SLA” é coluna derivada — não é possível mover para ela');return}
+ const old=t.status;if(old===st)return;
+ t.status=st;paintKanban(); // atualização otimista
+ try{
+  const {ok,data}=await api('/api/tickets/'+id+'/status',{method:'PATCH',body:JSON.stringify({status:st})});
+  if(!ok)throw new Error((data&&data.error)||'falha');
+  toast('Chamado #'+id+' → '+STLABEL[st]);
+ }catch(err){t.status=old;paintKanban();toast('Não foi possível atualizar no GLPI'+(err.message?': '+err.message:''))}
+}
 function filterKanban(q){q=q.toLowerCase();document.querySelectorAll('.kcard').forEach(c=>{const t=STATE.tickets.find(x=>x.id==c.dataset.id);c.style.display=(!q||(''+t.id+t.cat+t.sol).toLowerCase().includes(q))?'':'none'})}
 
 function renderSLA(v){
@@ -792,47 +803,67 @@ function renderSLA(v){
    <div class="card"><h4 class="mb12">Chamados por semana (canal)</h4><canvas id="c3" height="150"></canvas></div>
    <div class="card"><h4 class="mb12">Distribuição por categoria</h4><canvas id="c4" height="150"></canvas></div>
  </div>`;
- setTimeout(initCharts,40);
+ loadSLA();
 }
 let charts=[];
-function initCharts(){
+async function loadSLA(){
+ let d=null;try{const r=await api('/api/sla');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT==='sla')buildCharts(d);
+}
+function buildCharts(d){
  charts.forEach(c=>c.destroy&&c.destroy());charts=[];
  Chart.defaults.color='rgba(248,249,250,.6)';Chart.defaults.borderColor='rgba(255,255,255,.07)';Chart.defaults.font.family='Outfit';
+ const pal=['#00D9C0','#5B7FDE','#E85D9A','#FFB454','#9db4ff','#3ddc97'];
+ const ev=(d&&d.evolucao)||{labels:[],data:[]};
+ const cat=(d&&d.categoria)||{labels:[],data:[]};
+ const sem=(d&&d.semanal)||{labels:['S1','S2','S3','S4'],whatsapp:[],formulario:[],manual:[]};
+ const dist=(d&&d.distribuicao)||{labels:[],data:[]};
  const g=document.getElementById('c1').getContext('2d');const grad=g.createLinearGradient(0,0,0,180);grad.addColorStop(0,'rgba(0,217,192,.4)');grad.addColorStop(1,'rgba(0,217,192,0)');
- charts.push(new Chart(g,{type:'line',data:{labels:['Jan','Fev','Mar','Abr','Mai','Jun'],datasets:[{data:[82,85,88,86,90,91],borderColor:'#00D9C0',backgroundColor:grad,fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#00D9C0'}]},options:co({y:{min:70,max:100}})}));
- charts.push(new Chart(document.getElementById('c2'),{type:'bar',data:{labels:['Reset senha','Criação','Desativação','Acesso pasta','Transferência','E-mail'],datasets:[{data:[96,92,99,84,88,90],backgroundColor:['#3ddc97','#00D9C0','#3ddc97','#FFB454','#5B7FDE','#00D9C0'],borderRadius:6}]},options:{...co({x:{max:100}}),indexAxis:'y'}}));
- charts.push(new Chart(document.getElementById('c3'),{type:'bar',data:{labels:['S1','S2','S3','S4'],datasets:[{label:'WhatsApp',data:[34,41,38,45],backgroundColor:'#00D9C0',borderRadius:5},{label:'Formulário',data:[18,22,20,25],backgroundColor:'#5B7FDE',borderRadius:5},{label:'Manual',data:[6,5,7,4],backgroundColor:'#E85D9A',borderRadius:5}]},options:{...co(),plugins:{legend:{display:true,position:'bottom'}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true}}}}));
- charts.push(new Chart(document.getElementById('c4'),{type:'doughnut',data:{labels:['Reset senha','Criação','Desativação','Acesso pasta','Outros'],datasets:[{data:[38,24,12,14,12],backgroundColor:['#00D9C0','#5B7FDE','#E85D9A','#FFB454','#9db4ff'],borderWidth:0}]},options:{plugins:{legend:{position:'right'}},cutout:'62%'}}));
+ charts.push(new Chart(g,{type:'line',data:{labels:ev.labels,datasets:[{data:ev.data,borderColor:'#00D9C0',backgroundColor:grad,fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#00D9C0',spanGaps:true}]},options:co({y:{min:0,max:100}})}));
+ charts.push(new Chart(document.getElementById('c2'),{type:'bar',data:{labels:cat.labels,datasets:[{data:cat.data,backgroundColor:cat.labels.map((_,i)=>pal[i%pal.length]),borderRadius:6}]},options:{...co({x:{max:100}}),indexAxis:'y'}}));
+ charts.push(new Chart(document.getElementById('c3'),{type:'bar',data:{labels:sem.labels,datasets:[{label:'WhatsApp',data:sem.whatsapp,backgroundColor:'#00D9C0',borderRadius:5},{label:'Formulário',data:sem.formulario,backgroundColor:'#5B7FDE',borderRadius:5},{label:'Manual',data:sem.manual,backgroundColor:'#E85D9A',borderRadius:5}]},options:{...co(),plugins:{legend:{display:true,position:'bottom'}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true}}}}));
+ charts.push(new Chart(document.getElementById('c4'),{type:'doughnut',data:{labels:dist.labels,datasets:[{data:dist.data,backgroundColor:dist.labels.map((_,i)=>pal[i%pal.length]),borderWidth:0}]},options:{plugins:{legend:{position:'right'}},cutout:'62%'}}));
 }
 function co(scales){return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scales||{}}}
 
 function renderLive(v){
- v.innerHTML=ph('Atividade ao vivo','Feed em tempo real das operações',`<button class="btn btn-line btn-sm" id="pauseBtn" onclick="togglePause()"><i class="ti ti-player-pause"></i> Pausar</button>`)+
- `<div class="card"><div class="tl" id="feed">${STATE.events.map(feedItem).join('')}</div></div>`;
+ v.innerHTML=ph('Atividade ao vivo','Feed em tempo real das operações',`<button class="btn btn-line btn-sm" id="pauseBtn" onclick="togglePause()"><i class="ti ti-player-${STATE.paused?'play':'pause'}"></i> ${STATE.paused?'Retomar':'Pausar'}</button>`)+
+ `<div class="card"><div class="tl" id="feed"><div class="muted">Carregando…</div></div></div>`;
+ STATE.liveSeen=new Set();
+ loadLive(true);
 }
-function feedItem(e){const cmap={teal:'var(--p)',blue:'var(--s)',grad:'',red:'var(--err)',amber:'var(--warn)'};
- const bg=e.color==='grad'?'background:var(--g1)':'background:'+cmap[e.color];
- return `<div class="tlitem"><div class="tdot" style="${bg}"><i class="ti ${e.icon}"></i></div><div class="tx">${e.msg}</div><div class="tm mono">${fmtDate(e.time)}</div></div>`}
-function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementById('pauseBtn');b.innerHTML=STATE.paused?'<i class="ti ti-player-play"></i> Retomar':'<i class="ti ti-player-pause"></i> Pausar'}
-function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;const t=rnd(EVTYPES);const e={type:t[0],color:t[2],icon:t[3],time:new Date(),msg:t[1].replace('{n}',rnd(['BTeixeira','VCruz','FAndrade'])).replace('{t}',4560-Math.floor(Math.random()*60)).replace('{g}',rnd(['mpereira@','lteixeira@'])).replace('{m}',60000+Math.floor(Math.random()*9000))};
- STATE.events.unshift(e);if(CURRENT==='live'){const f=document.getElementById('feed');if(f){f.insertAdjacentHTML('afterbegin',feedItem(e));f.firstElementChild.style.animation='slidein .4s ease'}}
- const nc=document.getElementById('notifCount');if(nc)nc.textContent=Math.min(99,+nc.textContent+1);
- },Math.floor(Math.random()*7000+8000))}
+function liveIcon(t){return t==='exec'?{i:'ti-bolt',grad:true}:{i:'ti-ticket',c:'var(--p)'}}
+function feedItem(e){const ic=liveIcon(e.type);const bg=ic.grad?'background:var(--g1)':'background:'+(ic.c||'var(--s)');
+ return `<div class="tlitem" data-id="${e.id}"><div class="tdot" style="${bg}"><i class="ti ${ic.i}"></i></div><div class="tx">${e.msg}</div><div class="tm mono">${ovFmtAgo(e.at)}</div></div>`}
+async function loadLive(initial){
+ let evs=[];try{const r=await api('/api/live');if(r.ok)evs=r.data.events||[];}catch(e){}
+ const f=document.getElementById('feed');if(!f)return;
+ if(initial){STATE.liveSeen=new Set(evs.map(e=>e.id));f.innerHTML=evs.length?evs.map(feedItem).join(''):'<div class="empty"><i class="ti ti-activity"></i>Sem atividade recente</div>';return}
+ const novos=evs.filter(e=>!STATE.liveSeen.has(e.id));
+ novos.reverse().forEach(e=>{STATE.liveSeen.add(e.id);if(f.querySelector('.empty'))f.innerHTML='';f.insertAdjacentHTML('afterbegin',feedItem(e));f.firstElementChild.style.animation='slidein .4s ease';
+  const nc=document.getElementById('notifCount');if(nc)nc.textContent=Math.min(99,+nc.textContent+1)});
+}
+function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementById('pauseBtn');if(b)b.innerHTML=STATE.paused?'<i class="ti ti-player-play"></i> Retomar':'<i class="ti ti-player-pause"></i> Pausar'}
+function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;if(CURRENT==='live')loadLive(false)},12000)}
 function stopLive(){if(STATE.liveTimer)clearInterval(STATE.liveTimer)}
 
 function renderTickets(v){
- const data=ticketsForUser();
- v.innerHTML=ph('Chamados',data.length+' chamados'+(effectiveProfile()==='gestor'?' do seu setor':''),`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
+ v.innerHTML=ph('Chamados','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
  `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar por ID, solicitante, categoria..." oninput="filterTickets(this.value)"></div>
    <select class="inp" style="width:auto" onchange="filterTicketsStatus(this.value)"><option value="">Todos status</option>${STATUSES.map(s=>`<option value="${s}">${STLABEL[s]}</option>`).join('')}</select></div>
- <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr><th>ID</th><th>Solicitante</th><th>Setor</th><th>Categoria</th><th>Canal</th><th>Status</th><th>SLA</th><th>Atribuído</th><th>Aberto</th><th></th></tr></thead><tbody>
- ${data.map(ticketRow).join('')}</tbody></table></div>`;
+ <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr><th>ID</th><th>Solicitante</th><th>Setor</th><th>Categoria</th><th>Canal</th><th>Status</th><th>SLA</th><th>Atribuído</th><th>Aberto</th><th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ loadTickets().then(()=>{if(CURRENT==='tickets')paintTickets()});
+}
+function paintTickets(){
+ const data=ticketsForUser();const b=document.getElementById('ttblBody');if(!b)return;
+ b.innerHTML=data.length?data.map(ticketRow).join(''):'<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Nenhum chamado encontrado</td></tr>';
+ const h=document.querySelector('.page-head p');if(h)h.textContent=data.length+' chamados'+(effectiveProfile()==='gestor'?' do seu setor':'');
 }
 function ticketRow(t){return `<tr data-id="${t.id}" data-st="${t.status}" data-s="${(t.id+t.sol+t.cat+t.sector).toLowerCase()}" onclick="openTicket(${t.id})" style="cursor:pointer">
- <td class="mono">#${t.id}</td><td>${t.sol}</td><td>${t.sigla}</td><td>${t.cat}</td><td><i class="ti ${CHICON[t.canal]}"></i> ${t.canal}</td>
+ <td class="mono">#${t.id}</td><td>${t.sol}</td><td>${t.sigla}</td><td>${t.cat}</td><td><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.canal}</td>
  <td><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span></td>
- <td><div class="barh" style="width:54px"><i style="width:${t.sla}%;background:${slaColor(t.sla)}"></i></div></td>
- <td>${t.assignee}</td><td class="mono" style="font-size:11px">${relTime(t.aberto)}</td>
+ <td><div class="barh" style="width:54px"><i style="width:${t.sla==null?100:t.sla}%;background:${slaColor(t.sla)}"></i></div></td>
+ <td>${t.assignee}</td><td class="mono" style="font-size:11px">${t.abertoRel}</td>
  <td class="actions-cell" onclick="event.stopPropagation()"><button class="iconbtn" onclick="openTicket(${t.id})"><i class="ti ti-eye"></i></button></td></tr>`}
 function filterTickets(q){q=q.toLowerCase();document.querySelectorAll('#ttbl tbody tr').forEach(r=>{r.style.display=(!q||r.dataset.s.includes(q))?'':'none'})}
 function filterTicketsStatus(s){document.querySelectorAll('#ttbl tbody tr').forEach(r=>{r.style.display=(!s||r.dataset.st===s)?'':'none'})}
@@ -846,13 +877,13 @@ function openTicket(id){const t=STATE.tickets.find(x=>x.id===id);if(!t)return;
    <div class="kv"><span class="k">Solicitante</span><span>${t.sol}</span></div>
    <div class="kv"><span class="k">Setor</span><span>${t.sector}</span></div>
    <div class="kv"><span class="k">Atribuído</span><span>${t.assignee}</span></div>
-   <div class="kv"><span class="k">SLA restante</span><span style="color:${slaColor(t.sla)}">${t.sla}%</span></div>
-   <div class="kv"><span class="k">Aberto em</span><span class="mono">${fmtDate(t.aberto)}</span></div>
+   <div class="kv"><span class="k">SLA restante</span><span style="color:${slaColor(t.sla)}">${t.sla==null?'—':t.sla+'%'}</span></div>
+   <div class="kv"><span class="k">Aberto em</span><span class="mono">${t.abertoFull||'—'}</span></div>
   </div>
   <h4 class="mt16 mb12">Timeline</h4>
   <div class="tl">
-   <div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${t.canal}</div><div class="tm mono">${fmtDate(t.aberto)}</div></div>
-   <div class="tlitem"><div class="tdot" style="background:var(--s)"><i class="ti ti-checks"></i></div><div class="tx">Encaminhado para aprovação</div><div class="tm">há ${relTime(t.aberto)}</div></div>
+   <div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${t.canal}</div><div class="tm mono">${t.abertoFull||'—'}</div></div>
+   <div class="tlitem"><div class="tdot" style="background:var(--s)"><i class="ti ti-checks"></i></div><div class="tx">Encaminhado para aprovação</div><div class="tm">${t.abertoRel||''}</div></div>
    ${t.status==='resolvido'||t.status==='em_execucao'?'<div class="tlitem"><div class="tdot" style="background:var(--g1)"><i class="ti ti-bolt"></i></div><div class="tx">Execução no Active Directory iniciada</div><div class="tm">automático</div></div>':''}
   </div>
   ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${id})</a>`:''}

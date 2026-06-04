@@ -53,7 +53,7 @@ export default async function authRoutes(fastify) {
 
     await resetFailedLogin(user.id);
 
-    const payload = { uid: user.id, email: user.email, profile: user.profile, nome: user.nome };
+    const payload = { uid: user.id, email: user.email, profile: user.profile, nome: user.nome, sector: user.sector };
     if (!user.totp_enabled) {
       reply.startSession(payload, 'totp_setup', PARTIAL_TTL);
       return { step: 'totp_setup' };
@@ -103,7 +103,7 @@ export default async function authRoutes(fastify) {
     await logAccess({ userId: user.id, email: user.email, action: 'login', result: 'sucesso', ip: req.ip, userAgent: req.headers['user-agent'] });
 
     reply.startSession(
-      { uid: user.id, email: user.email, profile: user.profile, nome: user.nome },
+      { uid: user.id, email: user.email, profile: user.profile, nome: user.nome, sector: user.sector },
       'authed',
       SESSION_TTL,
     );

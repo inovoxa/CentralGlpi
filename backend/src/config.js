@@ -57,6 +57,8 @@ export const config = {
     password: env.GLPI_DB_PASSWORD || '',
     database: env.GLPI_DB_DATABASE || 'glpi',
     enabled: bool(env.GLPI_DB_HOST, false) || !!env.GLPI_DB_HOST,
+    // API REST v1 (apirest) para escrita de tickets (mover Kanban). Tokens vêm de glpi_token_cache.
+    apiV1Url: (env.GLPI_API_V1_URL || 'https://suporte.araraquara.sp.gov.br/api.php/v1').replace(/\/+$/, ''),
   },
 
   chatwoot: {
