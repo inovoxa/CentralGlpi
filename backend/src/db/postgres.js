@@ -19,7 +19,7 @@ const poolConfig = config.pg.connectionString
 poolConfig.options = `-c search_path=${config.pg.schema},public`;
 poolConfig.max = 10;
 poolConfig.idleTimeoutMillis = 30_000;
-poolConfig.connectionTimeoutMillis = 8_000;
+poolConfig.connectionTimeoutMillis = 4_000;
 
 export const pgPool = new Pool(poolConfig);
 
