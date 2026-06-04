@@ -1,0 +1,65 @@
+# ============================================================
+# Central de Operações GLPI — deploy de PRODUÇÃO (Coolify ou `docker compose up`)
+# Builda o backend (que serve a "sistema web/") e conecta aos serviços JÁ EXISTENTES:
+# PostgreSQL (o mesmo do n8n — compartilha o schema glpi_n8n/chamados_log),
+# MySQL do GLPI, Chatwoot e o Domain Controller. NÃO sobe um Postgres novo.
+#
+# Variáveis: defina na UI do Coolify ou em um arquivo .env na raiz (veja backend/.env.example).
+# No Coolify: tipo "Docker Compose", aponte para este arquivo; o domínio/HTTPS é gerido por ele.
+# ============================================================
+services:
+  central-glpi:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Aplica as migrações automaticamente no boot (cria tabelas app_*/auditoria_ad_*).
+      RUN_MIGRATIONS_ON_START: "true"
+      # Segredos (gere com: openssl rand -hex 32)
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      TOTP_ENC_KEY: ${TOTP_ENC_KEY}
+      TOTP_ISSUER: ${TOTP_ISSUER:-Central GLPI}
+      # PostgreSQL (o MESMO do n8n)
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT:-5432}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PG_DATABASE: ${PG_DATABASE:-Prefeitura_Municipal_de_Araraquara}
+      PG_SCHEMA: ${PG_SCHEMA:-glpi_n8n}
+      # MySQL do GLPI (usuário somente-SELECT)
+      GLPI_DB_HOST: ${GLPI_DB_HOST:-}
+      GLPI_DB_PORT: ${GLPI_DB_PORT:-3306}
+      GLPI_DB_USER: ${GLPI_DB_USER:-}
+      GLPI_DB_PASSWORD: ${GLPI_DB_PASSWORD:-}
+      GLPI_DB_DATABASE: ${GLPI_DB_DATABASE:-glpi}
+      GLPI_API_V1_URL: ${GLPI_API_V1_URL:-}
+      # Chatwoot (opcional)
+      CHATWOOT_URL: ${CHATWOOT_URL:-}
+      CHATWOOT_TOKEN: ${CHATWOOT_TOKEN:-}
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID:-}
+      # Auditoria de AD via SSH ao DC (opcional)
+      AD_SSH_HOST: ${AD_SSH_HOST:-}
+      AD_SSH_PORT: ${AD_SSH_PORT:-22}
+      AD_SSH_USER: ${AD_SSH_USER:-}
+      AD_SSH_PASSWORD: ${AD_SSH_PASSWORD:-}
+      AD_SSH_PRIVATE_KEY_PATH: ${AD_SSH_PRIVATE_KEY_PATH:-}
+      AD_SCRIPT_PATH: ${AD_SCRIPT_PATH:-C:\\Scripts\\Coletar_Auditoria_AD.ps1}
+      AD_COLLECTOR_CRON: ${AD_COLLECTOR_CRON:-*/5 * * * *}
+      # ROI estimado (tela Agente IA)
+      AGENTE_MIN_POR_OP: ${AGENTE_MIN_POR_OP:-25}
+      AGENTE_CUSTO_HORA: ${AGENTE_CUSTO_HORA:-60}
+    # Para a auditoria de AD com chave SSH, monte a chave e aponte AD_SSH_PRIVATE_KEY_PATH:
+    # volumes:
+    #   - ./secrets/ad_key:/run/secrets/ad_key:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

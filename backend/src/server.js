@@ -16,6 +16,7 @@ import agenteRoutes from './routes/agente.js';
 import auditoriaRoutes from './routes/auditoria.js';
 import adminRoutes from './routes/admin.js';
 import notificacoesRoutes from './routes/notificacoes.js';
+import { runMigrations } from './db/migrate.js';
 import { startCollector } from './ad/collector.js';
 import { pgClose } from './db/postgres.js';
 import { glpiClose } from './db/mysql.js';
@@ -69,6 +70,16 @@ async function shutdown(signal) {
 }
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// Migrações automáticas no boot (opcional — conveniente para deploy via Coolify/compose).
+if (config.runMigrationsOnStart) {
+  try {
+    const n = await runMigrations(app.log);
+    app.log.info(`[migrate] ${n} migração(ões) garantida(s) no boot`);
+  } catch (err) {
+    app.log.error(`[migrate] falha ao migrar no boot: ${err.message}`);
+  }
+}
 
 try {
   await app.listen({ port: config.port, host: config.host });

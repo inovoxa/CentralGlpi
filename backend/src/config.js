@@ -28,6 +28,7 @@ export const config = {
   nodeEnv: env.NODE_ENV || 'development',
   isProd: (env.NODE_ENV || 'development') === 'production',
   staticDir: resolveStatic(env.STATIC_DIR),
+  runMigrationsOnStart: bool(env.RUN_MIGRATIONS_ON_START, false),
 
   jwtSecret: env.JWT_SECRET || '',
   cookieSecret: env.COOKIE_SECRET || env.JWT_SECRET || '',
