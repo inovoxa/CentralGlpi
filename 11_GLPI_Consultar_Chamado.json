@@ -1,0 +1,325 @@
+{
+  "name": "11_GLPI_Consultar_Chamado",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "ticket_id",
+              "type": "number"
+            },
+            {
+              "name": "email"
+            },
+            {
+              "name": "limit",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1248,
+        1872
+      ],
+      "id": "91459ec6-f8b7-4376-8f46-e28bba35c3d5",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7WhIDdlVLWRtNCo0",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7WhIDdlVLWRtNCo0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        -1040,
+        1872
+      ],
+      "id": "b06fbe1e-742a-4f8a-8079-6e6b1d6537f0",
+      "name": "Chamar Auth"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Trigger\").item.json.ticket_id }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "gt"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Por ID"
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Trigger\").item.json.email }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Por Email"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -816,
+        1872
+      ],
+      "id": "283561b4-f943-41f8-9c1e-ec91b4065342",
+      "name": "Por ID ou Email?"
+    },
+    {
+      "parameters": {
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $(\"Trigger\").item.json.ticket_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -592,
+        1744
+      ],
+      "id": "d0427111-c498-401e-acce-f30a95bf3c55",
+      "name": "Buscar por ID"
+    },
+    {
+      "parameters": {
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $(\"Trigger\").item.json.ticket_id }}/Timeline",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -480,
+        1744
+      ],
+      "id": "ap-timeline-0001-0001-000000000001",
+      "name": "Buscar Aprovacao"
+    },
+    {
+      "parameters": {
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket?sort=date_creation&order=DESC&limit={{ $(\"Trigger\").item.json.limit||5 }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -592,
+        1984
+      ],
+      "id": "c30cbcad-36b3-4424-a40a-446d4e295d7e",
+      "name": "Buscar por Email"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst statusMap={1:'🆕 Novo',2:'🔧 Em andamento',3:'🔧 Em andamento (planejado)',4:'⏳ Pendente',5:'✅ Resolvido',6:'🔒 Fechado'};\nfunction mapAprov(v,comment){\n  v=Number(v);\n  if(v===2) return '⏳ *AGUARDANDO APROVAÇÃO do superior*';\n  if(v===3) return '✅ *APROVADO pelo superior*';\n  if(v===4) return '❌ *RECUSADO pelo superior*'+(comment?(' — motivo: '+comment):'');\n  return '➖ Não requer aprovação';\n}\nfunction tFmt(t,aprov){\n  const st = typeof t.status==='object'&&t.status!==null?(t.status.id||t.status):Number(t.status);\n  return {\n    id:t.id,\n    titulo:t.name,\n    aprovacao: aprov,\n    status: statusMap[st]||('Status '+st),\n    data_abertura:t.date,\n    ultima_atualizacao:t.date_mod,\n    categoria: typeof t.category==='object'&&t.category!==null?t.category.name:(t.category||'N/A'),\n    url:'https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id='+t.id\n  };\n}\nlet isById=false, ticket=null, timeline=[];\ntry { ticket=$('Buscar por ID').first().json; timeline=$('Buscar Aprovacao').all().map(i=>i.json); if(ticket&&ticket.id) isById=true; } catch(e){ isById=false; }\nif(isById){\n  if(typeof ticket.status==='string' && ticket.status.startsWith('ERROR')) return [{json:{erro:true, mensagem:'Chamado não encontrado. Verifique o número informado.'}}];\n  let vstatus=null, vcomment='';\n  let best=-1;\n  for(const e of (Array.isArray(timeline)?timeline:[])){\n    if(e && (e.type==='TicketValidation'||e.type==='Validation') && e.item){\n      const idn=Number(e.item.id||0);\n      if(idn>=best){ best=idn; vstatus=Number(e.item.status); vcomment=(e.item.comment_validation||'').replace(/<[^>]*>/g,'').trim(); }\n    }\n  }\n  if(vstatus===null){\n    const gv=ticket.global_validation;\n    vstatus = (gv && typeof gv==='object') ? Number(gv.id) : Number(gv);\n    if(!vstatus || isNaN(vstatus)) vstatus=1;\n  }\n  return [{json: tFmt(ticket, mapAprov(vstatus,vcomment))}];\n}\nconst raw=$input.first().json;\nif(typeof raw.status==='string' && raw.status.startsWith('ERROR')) return [{json:{erro:true, mensagem:'Chamado não encontrado.'}}];\nconst items=Array.isArray(raw)?raw:$input.all().map(i=>i.json);\nconst result=items.filter(t=>t&&t.id).map(t=>{ const gv=t.global_validation; let v=(gv&&typeof gv==='object')?Number(gv.id):Number(gv); if(!v||isNaN(v)) v=1; return {json: tFmt(t, mapAprov(v,''))}; });\nif(result.length===0) return [{json:{erro:true, mensagem:'Nenhum chamado encontrado.'}}];\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        1872
+      ],
+      "id": "c72bb451-7ecf-4b9c-9acc-5ab79158973c",
+      "name": "Mapear Status"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0008",
+              "name": "chamados",
+              "type": "array",
+              "value": "={{ $input.all().map(i=>i.json) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -160,
+        1872
+      ],
+      "id": "6f7ced90-3921-4ec0-9141-2a4cd71a7cf8",
+      "name": "Retornar Chamados"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chamar Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Auth": {
+      "main": [
+        [
+          {
+            "node": "Por ID ou Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Por ID ou Email?": {
+      "main": [
+        [
+          {
+            "node": "Buscar por ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar por Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar por ID": {
+      "main": [
+        [
+          {
+            "node": "Buscar Aprovacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Aprovacao": {
+      "main": [
+        [
+          {
+            "node": "Mapear Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar por Email": {
+      "main": [
+        [
+          {
+            "node": "Mapear Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mapear Status": {
+      "main": [
+        [
+          {
+            "node": "Retornar Chamados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "336c0d55-7166-46d2-a537-953dd8473aac",
+  "meta": {
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "ydlQZ723U96Rb3sY",
+  "tags": []
+}

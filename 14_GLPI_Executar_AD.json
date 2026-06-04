@@ -1,0 +1,559 @@
+{
+  "name": "14_GLPI_Executar_AD",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "ticket_id",
+              "type": "number"
+            },
+            {
+              "name": "conversa_id"
+            },
+            {
+              "name": "access_token"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        496
+      ],
+      "id": "ccf7ae25-d2fd-4902-b0df-3778cb2705ed",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT glpi_ticket_id, glpi_category_id, conversa_id, dados_solicitacao, ad_executado\nFROM glpi_n8n.chamados_log\nWHERE glpi_ticket_id = $1\nORDER BY created_at DESC\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [ $json.ticket_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        432,
+        496
+      ],
+      "id": "ffd7efee-ad4f-49aa-9f9d-6241fc8cb3cf",
+      "name": "Buscar Dados Chamado",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "ad-cond-1",
+              "leftValue": "={{ $json.ad_executado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        656,
+        496
+      ],
+      "id": "546c000f-a44c-4658-b621-6b65d54f4c58",
+      "name": "Já Executado?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ad-skip-1",
+              "name": "sucesso",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "ad-skip-2",
+              "name": "mensagem",
+              "type": "string",
+              "value": "Operação AD já foi executada para este chamado. Ignorando duplicata."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        688
+      ],
+      "id": "48e64fdf-6928-41fd-a34b-1ac77d8da1f4",
+      "name": "Ignorar Duplicata"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst catId = Number(item.glpi_category_id);\nconst dados = typeof item.dados_solicitacao === 'string'\n  ? JSON.parse(item.dados_solicitacao)\n  : item.dados_solicitacao;\n\nif (!dados) throw new Error('dados_solicitacao está vazio para o chamado #' + item.glpi_ticket_id);\n\n// Mapear categoria → ação do PowerShell\nconst mapa = {\n  15: 'Criar',\n  16: 'Reset',       // Reset de senha\n  17: 'Reativar',\n  18: 'Desativar',\n  20: 'CriarEmail',\n  22: 'Transferir'\n};\n\nconst acao = mapa[catId];\nif (!acao) throw new Error('Categoria ' + catId + ' não é uma operação de AD (esperado 15-18, 20 ou 22).');\n\n// Codificar dados em Base64 — evita problemas de escape com aspas, acentos\n// e shells diferentes (cmd.exe vs PowerShell) no servidor SSH.\nconst dadosJson = JSON.stringify(dados);\nconst dadosB64 = Buffer.from(dadosJson, 'utf8').toString('base64');\n\nreturn [{ json: {\n  acao,\n  categoria: catId,\n  ticket_id: item.glpi_ticket_id,\n  conversa_id: item.conversa_id,\n  dados_json: dadosJson,\n  comando: 'powershell.exe -ExecutionPolicy Bypass -File \"C:\\\\Scripts\\\\Executar_AD_Automatico.ps1\" -Acao \"' + acao + '\" -DadosB64 \"' + dadosB64 + '\"'\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        496
+      ],
+      "id": "7271f217-ac25-40b9-943f-19b33780f383",
+      "name": "Montar Comando AD",
+      "notesInFlow": true,
+      "notes": "⚠️ O script roda via SSH no servidor AD. Crie a credencial 'AD SERVER SSH CHAVE' no n8n (SSH Private Key) apontando para o servidor AD. Ajuste o caminho C:\\Scripts\\Executar_AD_Automatico.ps1 se necessário."
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.comando }}"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        496
+      ],
+      "id": "a22b1093-8dcb-4ef5-b128-8b1ffef6aa26",
+      "name": "Executar PowerShell AD",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inJson = $input.first().json;\nconst stdout = inJson.stdout || '';\nconst stderr = inJson.stderr || '';\nconst sshError = inJson.error || inJson.errorMessage;\nconst ticketId = $('Montar Comando AD').item.json.ticket_id;\nconst conversaId = $('Montar Comando AD').item.json.conversa_id;\nconst acao = $('Montar Comando AD').item.json.acao;\nconst token = $('Trigger').item.json.access_token;\n\nlet resultado;\nif (sshError && !stdout) {\n  // Falha de conexão/execução SSH antes mesmo do PowerShell rodar\n  resultado = { sucesso: false, erro: 'Falha SSH no servidor AD: ' + sshError };\n} else if (!stdout.trim()) {\n  resultado = { sucesso: false, erro: 'Servidor AD não retornou saída. stderr: ' + (stderr || 'vazio') };\n} else {\n  // Extrai o ULTIMO objeto JSON valido do stdout (defensivo: PowerShell as vezes imprime tabela do cmdlet antes do JSON)\n  resultado = null;\n  let lastErr = null;\n  // 1) Tenta achar o ultimo { ... } completo no stdout\n  const candidatos = stdout.match(/\\{[\\s\\S]*?\\}\\s*$/);\n  if (candidatos) {\n    try { resultado = JSON.parse(candidatos[0]); } catch(e) { lastErr = e.message; }\n  }\n  // 2) Fallback: tenta parse direto do trim\n  if (!resultado) {\n    try { resultado = JSON.parse(stdout.trim()); } catch(e) { lastErr = e.message; }\n  }\n  // 3) Fallback final: tenta pegar JSON da ultima linha\n  if (!resultado) {\n    const linhas = stdout.split(/\\r?\\n/).map(l => l.trim()).filter(Boolean);\n    for (let i = linhas.length - 1; i >= 0; i--) {\n      const l = linhas[i];\n      if (l.startsWith('{') && l.endsWith('}')) {\n        try { resultado = JSON.parse(l); break; } catch(_) {}\n      }\n    }\n  }\n  if (!resultado) {\n    resultado = { sucesso: false, erro: 'Saída inválida do PowerShell (sem JSON válido): ' + stdout.substring(stdout.length - 300) };\n  }\n}\n\n// Montar mensagem para o usuário via WhatsApp\nlet mensagemUsuario = '';\nconst acaoReal = resultado.acao_real || '';\n\nif (resultado.sucesso) {\n  switch(acaoReal || acao) {\n    case 'criado':\n    case 'reativado':\n    case 'atualizado':\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — ' + (acaoReal === 'atualizado' ? 'Conta Atualizada' : acaoReal === 'reativado' ? 'Conta Reativada' : 'Executado') + '*\\n\\n' +\n        (acaoReal === 'atualizado' ? 'Usuário já existia ativo no AD. Dados e perfil de referência foram atualizados e a senha foi redefinida' : acaoReal === 'reativado' ? 'Usuário reativado (existia desativado)' : 'Usuário criado') + ' com sucesso!\\n' +\n        '*Login:* ' + resultado.login + '\\n' +\n        '*Senha provisória:* ' + resultado.senha + '\\n' +\n        '*Domínio:* ' + (resultado.dominio || 'pma.local') + '\\n\\n' +\n        '_A senha deve ser alterada no primeiro acesso._';\n      break;\n    case 'reset_senha':\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — Senha Resetada*\\n\\n' +\n        '*Login:* ' + resultado.login + '\\n' +\n        '*Nova senha:* ' + resultado.senha + '\\n' +\n        '*Domínio:* ' + (resultado.dominio || 'pma.local') + '\\n\\n' +\n        '_A senha deve ser alterada no primeiro acesso._';\n      break;\n    case 'desativado':\n    case 'ja_desativado':\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — Usuário Desativado*\\n\\n' +\n        'O usuário *' + resultado.login + '* foi desativado com sucesso.';\n      break;\n    case 'acesso_pasta':\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — Acesso Concedido*\\n\\n' +\n        'Acesso à pasta *' + resultado.pasta + '* concedido para *' + resultado.login + '*.';\n      break;\n    case 'transferido':\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — Transferência Concluída*\\n\\n' +\n        'Usuário transferido com sucesso!\\n' +\n        '*Login:* ' + resultado.login + '\\n' +\n        '*Nova senha:* ' + resultado.senha + '\\n' +\n        '*Domínio:* ' + (resultado.dominio || 'pma.local') + '\\n' +\n        '*Novo setor:* ' + (resultado.novo_setor || '') + '\\n' +\n        '*Novo local:* ' + (resultado.novo_local || '') + '\\n\\n' +\n        '_A senha deve ser alterada no primeiro acesso._';\n      break;\n    case 'email_criado':\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — E-mail Institucional Criado*\\n\\n' +\n        'E-mail criado com sucesso!\\n' +\n        '*Login:* ' + resultado.login + '\\n' +\n        '*E-mail:* ' + resultado.email + '\\n' +\n        '*Banco de Dados:* ' + (resultado.database || 'Small Database') + '\\n\\n' +\n        '_O e-mail já está disponível para uso._';\n      break;\n    default:\n      mensagemUsuario = '\\u2705 *Chamado #' + ticketId + ' — Concluído*\\n\\n' + (resultado.mensagem || '');\n  }\n} else {\n  // Tratar casos especiais de erro com mensagens amigáveis\n  switch(acaoReal) {\n    case 'usuario_ja_existe':\n      mensagemUsuario = '\\u26A0\\uFE0F *Chamado #' + ticketId + ' — Usuário Já Existe*\\n\\n' +\n        'O usuário *' + resultado.login + '* já existe e está *ATIVO* no AD com o nome *' + resultado.nome_existente + '*.\\n\\n' +\n        '\\u{1F4C5} Último acesso com sucesso: *' + (resultado.ultimo_logon || 'Não disponível') + '*\\n\\n' +\n        '\\u{1F4A1} Recomendamos abrir um novo chamado solicitando *Reset de Senha* (menu 1.2).';\n      break;\n    case 'possivel_mesmo_usuario':\n      mensagemUsuario = '\\u26A0\\uFE0F *Chamado #' + ticketId + ' — Possível Mudança de Nome*\\n\\n' +\n        'O login *' + resultado.login + '* já existe no AD com o nome *' + resultado.nome_existente + '*.\\n' +\n        'O nome solicitado é *' + resultado.nome_solicitado + '*.\\n\\n' +\n        '\\u{1F4C5} Último acesso: *' + (resultado.ultimo_logon || 'Não disponível') + '*\\n\\n' +\n        'Isso pode indicar mudança de sobrenome (casamento ou divórcio).\\n' +\n        'Por favor, confirme com o solicitante se é a mesma pessoa.\\n\\n' +\n        '\\u{1F4A1} Se for a mesma pessoa, solicite *Transferência de Setor* (menu 1.7) ou contate a equipe de TI para atualizar o nome na conta existente.';\n      break;\n    case 'usuario_nao_encontrado': {\n      const sug = Array.isArray(resultado.sugestoes) ? resultado.sugestoes : [];\n      const listaSug = sug.length\n        ? sug.map(s => '  • *' + s.login + '* — ' + (s.nome || '') + (s.ativo === false ? ' _(desativado)_' : '')).join('\\n')\n        : '  _(nenhuma sugestão encontrada)_';\n      mensagemUsuario = '\\u26A0\\uFE0F *Chamado #' + ticketId + ' — Login não localizado*\\n\\n' +\n        'O login *' + (resultado.login_informado || '') + '* informado não foi encontrado no Active Directory.\\n\\n' +\n        '\\u{1F50D} *Sugestões de logins parecidos:*\\n' + listaSug + '\\n\\n' +\n        '\\u{1F4A1} Verifique se o login foi digitado corretamente e abra um novo chamado com o login correto.';\n      break;\n    }\n    case 'perfil_referencia_nao_encontrado': {\n      const sug = Array.isArray(resultado.sugestoes) ? resultado.sugestoes : [];\n      const listaSug = sug.length\n        ? sug.map(s => '  • *' + s.login + '* — ' + (s.nome || '') + (s.ativo === false ? ' _(desativado)_' : '')).join('\\n')\n        : '  _(nenhuma sugestão encontrada)_';\n      mensagemUsuario = '\\u26A0\\uFE0F *Chamado #' + ticketId + ' — Perfil de referência não localizado*\\n\\n' +\n        'O perfil de referência *' + (resultado.perfil_informado || '') + '* informado não foi encontrado no Active Directory.\\n\\n' +\n        '\\u{1F50D} *Sugestões de perfis parecidos:*\\n' + listaSug + '\\n\\n' +\n        '\\u{1F4A1} O perfil de referência deve ser o login de um colega que já possua os acessos desejados. Abra um novo chamado informando o login correto.';\n      break;\n    }\n    default:\n      mensagemUsuario = '\\u26A0\\uFE0F *Chamado #' + ticketId + ' — Erro na Execução*\\n\\n' +\n        'Ocorreu um erro ao processar sua solicitação. A equipe técnica foi notificada.\\n\\n' +\n        '_Detalhes técnicos foram registrados no chamado._';\n  }\n}\n\n// Montar followup para o GLPI (sempre inclui detalhes técnicos)\nlet followupHtml = '';\nif (resultado.sucesso) {\n  followupHtml = '<p><strong>[AUTOMÁTICO] Operação AD executada com sucesso</strong></p>' +\n    '<p>Ação: ' + (acaoReal || acao) + '</p>' +\n    '<p>Login: ' + (resultado.login || 'N/A') + '</p>' +\n    (resultado.ou ? '<p>OU: ' + resultado.ou + '</p>' : '') +\n    (resultado.pasta ? '<p>Pasta: ' + resultado.pasta + '</p>' : '') +\n    '<p>' + (resultado.mensagem || '') + '</p>';\n} else {\n  followupHtml = '<p><strong>[AUTOMÁTICO] ERRO na execução AD</strong></p>' +\n    '<p>Ação real: ' + (acaoReal || 'N/A') + '</p>' +\n    '<p>' + (resultado.erro || stderr || 'Erro desconhecido') + '</p>' +\n    (resultado.login ? '<p>Login: ' + resultado.login + '</p>' : '') +\n    (resultado.nome_existente ? '<p>Nome existente: ' + resultado.nome_existente + '</p>' : '') +\n    (resultado.nome_solicitado ? '<p>Nome solicitado: ' + resultado.nome_solicitado + '</p>' : '') +\n    (resultado.ultimo_logon ? '<p>Último logon: ' + resultado.ultimo_logon + '</p>' : '') +\n    '<p>' + (resultado.mensagem || '') + '</p>';\n}\n\n// Converter formatação WhatsApp markdown → HTML para registro no GLPI\nconst mensagemUsuarioHtml = '<p>' + mensagemUsuario\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\\*([^*\\n]+)\\*/g, '<strong>$1</strong>')\n  .replace(/_([^_\\n]+)_/g, '<em>$1</em>')\n  .replace(/\\n/g, '<br>') + '</p>';\n\nreturn [{ json: {\n  sucesso: resultado.sucesso,\n  resultado: resultado,\n  ticket_id: ticketId,\n  conversa_id: conversaId,\n  token: token,\n  mensagem_usuario: mensagemUsuario,\n  mensagem_usuario_html: mensagemUsuarioHtml,\n  followup_html: followupHtml,\n  resultado_json: JSON.stringify(resultado)\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        496
+      ],
+      "id": "ceb728d2-51cc-4130-94e7-5f1b1acd1dcb",
+      "name": "Processar Resultado AD"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $json.ticket_id }}/Timeline/Followup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: $json.followup_html }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1536,
+        496
+      ],
+      "id": "03ee2d74-c96f-4bf1-8cf8-92d4fc0966b0",
+      "name": "Followup GLPI"
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "accountId": {
+          "__rl": true,
+          "value": "1",
+          "mode": "id"
+        },
+        "inboxId": {
+          "__rl": true,
+          "value": "7",
+          "mode": "id"
+        },
+        "conversationId": {
+          "__rl": true,
+          "value": "={{ $('Processar Resultado AD').item.json.conversa_id }}",
+          "mode": "id"
+        },
+        "content": "={{ $('Processar Resultado AD').item.json.mensagem_usuario }}",
+        "replyToMessageId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "additionalFields": {}
+      },
+      "type": "@fazer-ai/n8n-nodes-chatwoot.chatwoot",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        496
+      ],
+      "id": "fb69c821-f732-41a9-a60b-43fa2ae6ed11",
+      "name": "Enviar WhatsApp Resultado",
+      "notesInFlow": true,
+      "credentials": {
+        "fazerAiChatwootApi": {
+          "id": "LFD5xC4FKOwEKOLr",
+          "name": "Chatwoot fazer.ai restaurante 01"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Envia o resultado da execucao AD ao solicitante via WhatsApp. accountId=1, inboxId=7 (alinhado com Gatilho WhatsApp e WF 13)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $('Processar Resultado AD').item.json.ticket_id }}/Timeline/Followup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Processar Resultado AD').item.json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: '<p><strong>[Resposta enviada ao usuário via WhatsApp]</strong></p>' + $('Processar Resultado AD').item.json.mensagem_usuario_html }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1968,
+        496
+      ],
+      "id": "d4e8b1f3-5c72-4a9e-9f81-3b6e0a47c512",
+      "name": "Registrar Resposta no Chamado",
+      "notesInFlow": true,
+      "notes": "Registra no histórico do chamado a mensagem que o usuário recebeu por WhatsApp."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE glpi_n8n.chamados_log\nSET ad_executado = TRUE,\n    ad_resultado = $1::jsonb,\n    ad_executado_em = NOW()\nWHERE glpi_ticket_id = $2;",
+        "options": {
+          "queryReplacement": "={{ [$('Processar Resultado AD').item.json.resultado_json, $('Processar Resultado AD').item.json.ticket_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2192,
+        496
+      ],
+      "id": "252abe38-4a9a-46a4-ac67-70440437460d",
+      "name": "Marcar AD Executado",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "ad-close-1",
+              "leftValue": "={{ $('Processar Resultado AD').item.json.sucesso }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2416,
+        496
+      ],
+      "id": "a9deb4da-9a8e-4a7d-bd99-cda0d631323a",
+      "name": "Sucesso?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $('Processar Resultado AD').item.json.ticket_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Processar Resultado AD').item.json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: { id: 6 } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        400
+      ],
+      "id": "b645fc36-fd50-4626-8bae-d0664e319e4c",
+      "name": "Fechar Chamado GLPI"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $('Processar Resultado AD').item.json.ticket_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Processar Resultado AD').item.json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: { id: 2 } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        608
+      ],
+      "id": "f7c1a8e2-9b3d-4e2a-8d51-1f4b2e9c0a33",
+      "name": "Manter Aberto p/ Revisão",
+      "notesInFlow": true,
+      "notes": "Falha na automação AD — mantém o chamado em status 2 (Em atendimento — atribuído) para revisão manual pela equipe de TI. O followup com erro já foi registrado."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Buscar Dados Chamado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Dados Chamado": {
+      "main": [
+        [
+          {
+            "node": "Já Executado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Já Executado?": {
+      "main": [
+        [
+          {
+            "node": "Ignorar Duplicata",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar Comando AD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Comando AD": {
+      "main": [
+        [
+          {
+            "node": "Executar PowerShell AD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar PowerShell AD": {
+      "main": [
+        [
+          {
+            "node": "Processar Resultado AD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Resultado AD": {
+      "main": [
+        [
+          {
+            "node": "Followup GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Followup GLPI": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp Resultado": {
+      "main": [
+        [
+          {
+            "node": "Registrar Resposta no Chamado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar Resposta no Chamado": {
+      "main": [
+        [
+          {
+            "node": "Marcar AD Executado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar AD Executado": {
+      "main": [
+        [
+          {
+            "node": "Sucesso?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sucesso?": {
+      "main": [
+        [
+          {
+            "node": "Fechar Chamado GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Manter Aberto p/ Revisão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "892d4ac5-be16-4fb4-aa68-a426f74343b1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "SBOFxygwU2hdZxdz",
+  "tags": []
+}

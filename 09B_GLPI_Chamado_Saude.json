@@ -1,0 +1,381 @@
+{
+  "name": "09B_GLPI_Chamado_Saude",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "conversa_id"
+            },
+            {
+              "name": "subtipo"
+            },
+            {
+              "name": "nome_solicitante"
+            },
+            {
+              "name": "sistema_saude"
+            },
+            {
+              "name": "local"
+            },
+            {
+              "name": "cep"
+            },
+            {
+              "name": "logradouro"
+            },
+            {
+              "name": "numero"
+            },
+            {
+              "name": "complemento"
+            },
+            {
+              "name": "bairro"
+            },
+            {
+              "name": "cidade"
+            },
+            {
+              "name": "uf"
+            },
+            {
+              "name": "telefone"
+            },
+            {
+              "name": "email_unidade"
+            },
+            {
+              "name": "email_gerencia"
+            },
+            {
+              "name": "email_secretaria"
+            },
+            {
+              "name": "setor"
+            },
+            {
+              "name": "nome_maquina"
+            },
+            {
+              "name": "ip"
+            },
+            {
+              "name": "patrimonio"
+            },
+            {
+              "name": "serie"
+            },
+            {
+              "name": "prioridade"
+            },
+            {
+              "name": "descricao_solicitacao"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        5568,
+        2448
+      ],
+      "id": "0bdee9ef-18da-46fc-a99f-2425b3647170",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7WhIDdlVLWRtNCo0",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7WhIDdlVLWRtNCo0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        5776,
+        2448
+      ],
+      "id": "2b14f70f-b248-4e64-a15e-9a2d52b93014",
+      "name": "Chamar Auth"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst safe = (s) => (s || '').replace(/'/g, \"''\");\nconst d = $('Trigger').item.json;\nconst subtipoMap = {\"3.1\":{\"label\":\"Problemas de Acesso\",\"catId\":34},\"3.2\":{\"label\":\"Novo Acesso\",\"catId\":35},\"3.3\":{\"label\":\"Solicitações Gerais\",\"catId\":36}};\nconst info = subtipoMap[d.subtipo] || {label:d.subtipo||'Saúde',catId:13};\nconst prioMap = {baixa:1,media:2,alta:3,muito_alta:4};\nconst prio = prioMap[d.prioridade] || 3;\nconst html = [\n  '<p><strong>CHAMADO SISTEMAS DA SAÚDE — ' + info.label.toUpperCase() + '</strong></p>',\n  '<p><em>⚠️ Encaminhado automaticamente para Informática da Saúde</em></p>',\n  '<p><strong>Solicitante:</strong> ' + (d.nome_solicitante||'') + '</p>',\n  '<p><strong>Sistema de Saúde:</strong> ' + (d.sistema_saude||'Não informado') + '</p>',\n  '<p><strong>Local:</strong> ' + (d.local||'') + '</p>',\n  '<p><strong>Endereço:</strong> ' + (d.logradouro||'') + ', ' + (d.numero||'') + (d.complemento?' — '+d.complemento:'') + '</p>',\n  '<p><strong>Bairro:</strong> ' + (d.bairro||'') + ' | Cidade: ' + (d.cidade||'') + ' | UF: ' + (d.uf||'') + ' | CEP: ' + (d.cep||'') + '</p>',\n  '<p><strong>Telefone:</strong> ' + (d.telefone||'') + '</p>',\n  '<p><strong>E-mail Unidade:</strong> ' + (d.email_unidade||'') + '</p>',\n  d.email_gerencia   ? '<p><strong>E-mail Gerência:</strong> ' + d.email_gerencia + '</p>' : '',\n  d.email_secretaria ? '<p><strong>E-mail Secretaria:</strong> ' + d.email_secretaria + '</p>' : '',\n  '<p><strong>Setor:</strong> ' + (d.setor||'') + '</p>',\n  d.nome_maquina ? '<p><strong>Máquina:</strong> ' + d.nome_maquina + ' | IP: ' + (d.ip||'') + '</p>' : '',\n  d.patrimonio   ? '<p><strong>Patrimônio:</strong> ' + d.patrimonio + ' | Série: ' + (d.serie||'') + '</p>' : '',\n  '<p><strong>Descrição:</strong> ' + (d.descricao_solicitacao||'') + '</p>',\n].filter(Boolean).join('\\n');\nreturn [{json:{\n  html,\n  titulo:'Saúde [' + info.label + '] - ' + safe(d.local) + ' - ' + safe(d.setor),\n  itilcategories_id: info.catId,\n  prioridade: prio\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        2448
+      ],
+      "id": "de19ca20-743a-426e-b2d0-d2c106ad4d83",
+      "name": "Montar HTML Saúde"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({name: $('Montar HTML Saúde').item.json.titulo, content: $('Montar HTML Saúde').item.json.html, type: 1, status: 1, urgency: $('Montar HTML Saúde').item.json.prioridade, impact: 3, priority: $('Montar HTML Saúde').item.json.prioridade, category: $('Montar HTML Saúde').item.json.itilcategories_id, request_type: 3}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5952,
+        2320
+      ],
+      "id": "d5ee3abe-217b-4c2f-be4f-779dea6d332e",
+      "name": "Criar Chamado GLPI"
+    },
+    {
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst userId = $(\"Buscar Usuario ID\").item.json.userId;\nconst userMobile = $(\"Buscar Usuario ID\").item.json.userMobile || \"\";\nconst ticketId = $(\"Criar Chamado GLPI\").item.json.id;\nif (!userId || !ticketId) return [$input.first()];\nconst token = $(\"Chamar Auth\").item.json.access_token;\nconst headers = { \"Authorization\": \"Bearer \" + token, \"Content-Type\": \"application/json\" };\n\n// 1) Adicionar requerente ao ticket\ntry {\n  await helpers.httpRequest({\n    method: \"POST\",\n    url: \"https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/\" + ticketId + \"/TeamMember\",\n    headers,\n    body: { type: \"User\", id: userId, role: \"requester\" }\n  });\n} catch(e) { /* ignora */ }\n\n// 2) Atualizar celular do usuario SO se ele estiver vazio\nconst celularTrigger = $(\"Trigger\").item.json.celular || $(\"Trigger\").item.json.telefone || \"\";\nif (celularTrigger && !userMobile) {\n  try {\n    await helpers.httpRequest({\n      method: \"PATCH\",\n      url: \"https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User/\" + userId,\n      headers,\n      body: { mobile: celularTrigger }\n    });\n  } catch(e) { /* ignora */ }\n}\n\nreturn [$input.first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6208,
+        2448
+      ],
+      "id": "01fdf4ad-287b-450b-aa06-c28671b01d31",
+      "name": "Definir Requerente"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/={{ $json.id }}/TeamMember",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({type: 'Group', id: 3, role: 'assigned'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6448,
+        2448
+      ],
+      "id": "7b5688cf-ab79-482c-b5e0-f90f5accb79e",
+      "name": "Assign Grupo Saúde"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO glpi_n8n.chamados_log\n  (conversa_id, glpi_ticket_id, glpi_ticket_url, titulo, menu_numero, menu_descricao,\n   solicitante_nome, solicitante_email, solicitante_matricula, secretaria, coordenadoria,\n   glpi_category_id, prioridade, resposta_glpi)\nVALUES (\n  $1, $2,\n  'https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id=' || $2::text,\n  $3, $4, $5,\n  $6, $7, $8, $9, $10,\n  $11, 2, '{}'::jsonb\n) ON CONFLICT DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Trigger').item.json.conversa_id || '',\n  $('Criar Chamado GLPI').item.json.id,\n  $('Montar HTML Saúde').item.json.titulo,\n  3,\n  'Sistemas da Saúde',\n  $('Trigger').item.json.nome_completo || $('Trigger').item.json.nome_solicitante || '',\n  $('Trigger').item.json.email_pessoal || $('Trigger').item.json.email_unidade || '',\n  $('Trigger').item.json.matricula || '',\n  $('Trigger').item.json.secretaria || '',\n  $('Trigger').item.json.coordenadoria || '',\n  $('Criar Chamado GLPI').item.json.category || 0\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        6656,
+        2448
+      ],
+      "id": "1a0d336e-55e0-4f91-b349-4fd26e4a1428",
+      "name": "Log no Banco",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0008",
+              "name": "ticket_id",
+              "type": "number",
+              "value": "={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            },
+            {
+              "id": "node-0009",
+              "name": "ticket_url",
+              "type": "string",
+              "value": "=https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            },
+            {
+              "id": "node-0010",
+              "name": "sucesso",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "node-0011",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=✅ Chamado aberto! Número: *{{ $(\"Criar Chamado GLPI\").item.json.id }}*\n🔗 https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        6880,
+        2448
+      ],
+      "id": "392815b4-9e78-45c7-9c78-59380cda694f",
+      "name": "Retornar Resultado"
+    },
+    {
+      "position": [
+        6180,
+        2448
+      ],
+      "name": "Buscar Usuario ID",
+      "id": "buscar-usuario-46708",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst token = $(\"Chamar Auth\").item.json.access_token;\nconst d = $(\"Trigger\").item.json;\nconst email = d.email_pessoal || d.email_unidade || d.email_institucional || \"\";\nconst login = d.nome_usuario || d.login_usuario_reset || d.login_usuario_reativar || d.login_usuario_desativar || d.login_usuario_transferir || \"\";\nconst nome  = d.nome_completo || d.nome_solicitante || \"\";\n\nasync function searchUser(filter, requireUnique) {\n  try {\n    const r = await helpers.httpRequest({\n      method: \"GET\",\n      url: `https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User?filter=${encodeURIComponent(filter)}`,\n      headers: { \"Authorization\": \"Bearer \" + token }\n    });\n    const users = Array.isArray(r) ? r : (r?.data ? r.data : []);\n    if (users.length === 0) return null;\n    if (requireUnique && users.length > 1) return null;\n    return users[0];\n  } catch(e) { return null; }\n}\n\nlet user = null;\nif (email) user = await searchUser(`emails.email==${email}`, false);\nif (!user && login) user = await searchUser(`username==${login}`, false);\nif (!user && nome) {\n  const first = nome.trim().split(/\\s+/)[0];\n  if (first) user = await searchUser(`firstname==${first}`, true);\n}\n\nreturn [{ json: {\n  userId:     user?.id || 0,\n  userMobile: user?.mobile || \"\",\n  email, login, nome\n} }];"
+      },
+      "typeVersion": 2
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chamar Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Auth": {
+      "main": [
+        [
+          {
+            "node": "Montar HTML Saúde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar HTML Saúde": {
+      "main": [
+        [
+          {
+            "node": "Buscar Usuario ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Chamado GLPI": {
+      "main": [
+        [
+          {
+            "node": "Definir Requerente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Definir Requerente": {
+      "main": [
+        [
+          {
+            "node": "Assign Grupo Saúde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Grupo Saúde": {
+      "main": [
+        [
+          {
+            "node": "Log no Banco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log no Banco": {
+      "main": [
+        [
+          {
+            "node": "Retornar Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Usuario ID": {
+      "main": [
+        [
+          {
+            "node": "Criar Chamado GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c8d92c3f-aeab-4aed-8f35-aeea2384597d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "65m9bQPLaH3OV1r8",
+  "tags": []
+}

@@ -1,0 +1,484 @@
+{
+  "name": "03_GLPI_Verificar_Usuario",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "email"
+            },
+            {
+              "name": "login"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        1056
+      ],
+      "id": "44df8498-bd88-4d10-95d9-5a8a22f09c58",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT glpi_user_id, glpi_login, glpi_nome, glpi_email, glpi_is_active, encontrado\n       FROM glpi_n8n.glpi_usuarios_cache\n       WHERE chave_busca = COALESCE(NULLIF('{{ $json.email }}',''),'{{ $json.login }}')\n         AND expires_at > NOW() LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        96,
+        1056
+      ],
+      "id": "376cd6c1-8851-47c8-9bd5-d6014509ae5b",
+      "name": "Verificar Cache",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "node-0013",
+              "leftValue": "={{ $json.glpi_user_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        304,
+        1056
+      ],
+      "id": "7f421858-3b6d-4175-bcf4-d529c80a50ce",
+      "name": "Cache Hit?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0014",
+              "name": "user_id",
+              "type": "number",
+              "value": "={{ $json.glpi_user_id }}"
+            },
+            {
+              "id": "node-0015",
+              "name": "login",
+              "type": "string",
+              "value": "={{ $json.glpi_login }}"
+            },
+            {
+              "id": "node-0016",
+              "name": "nome",
+              "type": "string",
+              "value": "={{ $json.glpi_nome }}"
+            },
+            {
+              "id": "node-0017",
+              "name": "email",
+              "type": "string",
+              "value": "={{ $json.glpi_email }}"
+            },
+            {
+              "id": "node-0018",
+              "name": "is_active",
+              "type": "boolean",
+              "value": "={{ $json.glpi_is_active }}"
+            },
+            {
+              "id": "node-0019",
+              "name": "encontrado",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "node-0020",
+              "name": "from_cache",
+              "type": "boolean",
+              "value": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        528,
+        928
+      ],
+      "id": "dcc8bb55-4a0e-41f0-a71e-ddd66214ab94",
+      "name": "Retornar Cache"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7WhIDdlVLWRtNCo0",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7WhIDdlVLWRtNCo0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        1168
+      ],
+      "id": "56db33cb-97a2-4673-a546-b604ab1f3ae7",
+      "name": "Chamar Auth"
+    },
+    {
+      "parameters": {
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User?filter=_email=={{ encodeURIComponent($('Trigger').item.json.email||$('Trigger').item.json.login) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        752,
+        1168
+      ],
+      "id": "8dda3655-ee41-4d2e-80a8-c8bc23bbe327",
+      "name": "Buscar Usuário V2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "node-0021",
+              "leftValue": "={{ Array.isArray($json) ? $json.length : ($json.id ? 1 : 0) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        976,
+        1168
+      ],
+      "id": "5a3af83b-d156-479d-a5a6-e2e588214ef4",
+      "name": "Encontrou?"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst raw = $input.first().json;\nconst data = Array.isArray(raw) ? raw[0] : raw;\nreturn [{json:{\n  user_id: data.id,\n  login:   data.name,\n  nome:    (data.firstname||'') + ' ' + (data.realname||''),\n  email:   data.emails?.[0]?.email || data.email || '',\n  is_active: data.is_active === 1,\n  encontrado: true\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        1072
+      ],
+      "id": "a15380bc-950f-4293-bbf3-1ecd2b638d98",
+      "name": "Extrair Dados"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO glpi_n8n.glpi_usuarios_cache\n         (chave_busca,tipo_chave,glpi_user_id,glpi_login,glpi_nome,glpi_email,glpi_is_active,encontrado)\n       VALUES(\n         '{{ $('Trigger').item.json.email||$('Trigger').item.json.login }}','email',\n         {{ $json.user_id }},'{{ $json.login }}','{{ $json.nome }}',\n         '{{ $json.email }}',{{ $json.is_active }},true\n       )\n       ON CONFLICT(chave_busca) DO UPDATE SET\n         glpi_user_id=EXCLUDED.glpi_user_id, glpi_login=EXCLUDED.glpi_login,\n         glpi_is_active=EXCLUDED.glpi_is_active,\n         cached_at=NOW(), expires_at=NOW()+INTERVAL '24 hours';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1408,
+        1072
+      ],
+      "id": "b1ab05b9-b8fd-41fe-ba2b-bdd7f9de97f0",
+      "name": "Salvar Cache",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0022",
+              "name": "user_id",
+              "type": "number",
+              "value": "={{ $json.user_id }}"
+            },
+            {
+              "id": "node-0023",
+              "name": "login",
+              "type": "string",
+              "value": "={{ $json.login }}"
+            },
+            {
+              "id": "node-0024",
+              "name": "nome",
+              "type": "string",
+              "value": "={{ $json.nome }}"
+            },
+            {
+              "id": "node-0025",
+              "name": "email",
+              "type": "string",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "id": "node-0026",
+              "name": "is_active",
+              "type": "boolean",
+              "value": "={{ $json.is_active }}"
+            },
+            {
+              "id": "node-0027",
+              "name": "encontrado",
+              "type": "boolean",
+              "value": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1632,
+        1072
+      ],
+      "id": "bdf8a473-6ad4-4ee3-abf2-827f1559a6f1",
+      "name": "Retornar Encontrado"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO glpi_n8n.glpi_usuarios_cache(chave_busca,tipo_chave,encontrado)\n       VALUES('{{ $('Trigger').item.json.email||$('Trigger').item.json.login }}','email',false)\n       ON CONFLICT(chave_busca) DO UPDATE SET encontrado=false,cached_at=NOW(),expires_at=NOW()+INTERVAL '1 hour';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1184,
+        1296
+      ],
+      "id": "c198cedf-4eb1-45ba-8036-bb5e1eeb588f",
+      "name": "Salvar Cache Não Enc.",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0028",
+              "name": "user_id",
+              "type": "number",
+              "value": "=0"
+            },
+            {
+              "id": "node-0029",
+              "name": "encontrado",
+              "type": "boolean",
+              "value": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1408,
+        1296
+      ],
+      "id": "5fb7010d-b38c-40ff-8e82-d61d45287d26",
+      "name": "Retornar Não Encontrado"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verificar Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Cache": {
+      "main": [
+        [
+          {
+            "node": "Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "Retornar Cache",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chamar Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Auth": {
+      "main": [
+        [
+          {
+            "node": "Buscar Usuário V2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Usuário V2": {
+      "main": [
+        [
+          {
+            "node": "Encontrou?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encontrou?": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Salvar Cache Não Enc.",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "Salvar Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Cache": {
+      "main": [
+        [
+          {
+            "node": "Retornar Encontrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Cache Não Enc.": {
+      "main": [
+        [
+          {
+            "node": "Retornar Não Encontrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c5c2e25f-7f3b-4752-b819-f02f7560668e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "V53GGvZtpj2qjhZD",
+  "tags": []
+}

@@ -1,0 +1,170 @@
+{
+    "settings":  {
+                     "executionOrder":  "v1"
+                 },
+    "name":  "25_GLPI_Sync_Aprovadores",
+    "tags":  [
+
+             ],
+    "nodes":  [
+                  {
+                      "position":  [
+                                       160,
+                                       540
+                                   ],
+                      "name":  "Documentacao",
+                      "id":  "note-25-001",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "parameters":  {
+                                         "color":  4,
+                                         "content":  "## WF 25 - Sync Aprovadores GLPI (planilha -\u003e grupo AD)\n\nLe C:\\Scripts\\aprovadores.csv no servidor AD e ajusta o grupo \"Aprovadores GLPI\"\npara refletir exatamente o conteudo da planilha.\n\nRoda diariamente as 06:00 (cron \"0 6 * * *\").\n\nLogica:\n1. Schedule dispara\n2. Set publica config (CsvPath, GrupoAD)\n3. Code monta comando PowerShell com parametros\n4. SSH executa Sync_Aprovadores.ps1 no servidor AD\n5. Code parseia o JSON de stdout e gera resumo\n\nCSV deve ter colunas: nome_usuario, nome_completo, cargo, departamento.\nA chave eh nome_usuario (= SamAccountName do AD).\n\nSYNC TOTAL: quem sai da planilha SAI do grupo. Avise os funcionarios antes.\n\nPre-requisitos:\n- Grupo \"Aprovadores GLPI\" criado no AD\n  Caminho: pma.local/Prefeitura Municipal/Coordenadoria Executiva de Tecnologia da Informacao/Aprovadores GLPI\n  DN: CN=Aprovadores GLPI,OU=Coordenadoria Executiva de Tecnologia da Informacao,OU=Prefeitura Municipal,DC=pma,DC=local\n- Arquivo C:\\Scripts\\aprovadores.csv existente (com cabecalho mesmo que sem dados)\n- Sync_Aprovadores.ps1 em C:\\Scripts\\ com BOM UTF-8\n- Credencial n8n \"AD SERVER SSH CHAVE\" (mesma do WF14)\n\nPara forcar uma sync fora do horario: executar manualmente no n8n.",
+                                         "width":  540,
+                                         "height":  520
+                                     },
+                      "typeVersion":  1
+                  },
+                  {
+                      "position":  [
+                                       240,
+                                       300
+                                   ],
+                      "name":  "Schedule 06h",
+                      "id":  "trg-25-001",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "expression":  "0 6 * * *",
+                                                                           "field":  "cronExpression"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "typeVersion":  1.2
+                  },
+                  {
+                      "id":  "set-25-001",
+                      "name":  "Config",
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "notes":  "Ajuste aqui o caminho do CSV e o nome do grupo AD sem mexer no Code.",
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "value":  "C:\\Scripts\\aprovadores.csv",
+                                                                                     "name":  "csv_path",
+                                                                                     "id":  "cfg-1",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "value":  "Aprovadores GLPI",
+                                                                                     "name":  "grupo_ad",
+                                                                                     "id":  "cfg-2",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         }
+                                     },
+                      "notesInFlow":  true,
+                      "position":  [
+                                       460,
+                                       300
+                                   ]
+                  },
+                  {
+                      "position":  [
+                                       680,
+                                       300
+                                   ],
+                      "name":  "Montar Comando",
+                      "id":  "code-25-001",
+                      "type":  "n8n-nodes-base.code",
+                      "parameters":  {
+                                         "jsCode":  "const cfg = $(\u0027Config\u0027).first().json;\nconst csvPath = cfg.csv_path;\nconst grupoAD = cfg.grupo_ad;\n// Aspas duplas nos parametros para suportar espacos (ex: \"Aprovadores GLPI\")\nconst comando = `powershell.exe -ExecutionPolicy Bypass -File \"C:\\\\Scripts\\\\Sync_Aprovadores.ps1\" -CsvPath \"${csvPath}\" -GrupoAD \"${grupoAD}\"`;\nreturn [{ json: { comando, csv_path: csvPath, grupo_ad: grupoAD } }];"
+                                     },
+                      "typeVersion":  2
+                  },
+                  {
+                      "parameters":  {
+                                         "command":  "={{ $json.comando }}",
+                                         "authentication":  "privateKey"
+                                     },
+                      "position":  [
+                                       900,
+                                       300
+                                   ],
+                      "type":  "n8n-nodes-base.ssh",
+                      "id":  "ssh-25-001",
+                      "notesInFlow":  true,
+                      "notes":  "Reconectar credencial \u0027AD SERVER SSH CHAVE\u0027 (SSH Private Key apontando para o servidor AD).",
+                      "name":  "Executar no AD",
+                      "onError":  "continueRegularOutput",
+                      "typeVersion":  1
+                  },
+                  {
+                      "position":  [
+                                       1120,
+                                       300
+                                   ],
+                      "name":  "Processar Resultado",
+                      "id":  "code-25-002",
+                      "type":  "n8n-nodes-base.code",
+                      "parameters":  {
+                                         "jsCode":  "const inJson = $input.first().json;\nconst stdout = inJson.stdout || \u0027\u0027;\nconst stderr = inJson.stderr || \u0027\u0027;\nconst sshError = inJson.error || inJson.errorMessage;\n\nlet resultado;\nif (sshError \u0026\u0026 !stdout) {\n  resultado = { sucesso: false, erro: \u0027Falha SSH no servidor AD: \u0027 + sshError };\n} else if (!stdout.trim()) {\n  resultado = { sucesso: false, erro: \u0027Servidor AD nao retornou saida. stderr: \u0027 + (stderr || \u0027vazio\u0027) };\n} else {\n  // Defensivo: extrair ULTIMO objeto JSON valido do stdout\n  // (PowerShell as vezes imprime warnings/progress antes do JSON final)\n  resultado = null;\n  const candidatos = stdout.match(/\\{[\\s\\S]*\\}\\s*$/);\n  if (candidatos) {\n    try { resultado = JSON.parse(candidatos[0]); } catch(_) {}\n  }\n  if (!resultado) {\n    try { resultado = JSON.parse(stdout.trim()); } catch(_) {}\n  }\n  if (!resultado) {\n    const linhas = stdout.split(/\\r?\\n/).map(l =\u003e l.trim()).filter(Boolean);\n    for (let i = linhas.length - 1; i \u003e= 0; i--) {\n      const l = linhas[i];\n      if (l.startsWith(\u0027{\u0027) \u0026\u0026 l.endsWith(\u0027}\u0027)) {\n        try { resultado = JSON.parse(l); break; } catch(_) {}\n      }\n    }\n  }\n  if (!resultado) {\n    resultado = { sucesso: false, erro: \u0027Saida invalida do PowerShell (sem JSON valido): \u0027 + stdout.substring(Math.max(0, stdout.length - 300)) };\n  }\n}\n\n// Resumo legivel\nlet resumo = \u0027\u0027;\nif (resultado.sucesso) {\n  resumo = `Sync OK em ${resultado.grupo}. ` +\n           `CSV=${resultado.csv_total} | AD antes=${resultado.ad_antes} -\u003e depois=${resultado.ad_depois}. ` +\n           `+${(resultado.adicionados || []).length} adicionados, ` +\n           `-${(resultado.removidos || []).length} removidos, ` +\n           `${(resultado.ignorados || []).length} ignorados, ` +\n           `${(resultado.erros || []).length} erros.`;\n} else {\n  resumo = \u0027FALHA: \u0027 + (resultado.erro || \u0027erro desconhecido\u0027);\n}\n\nreturn [{ json: {\n  sucesso: !!resultado.sucesso,\n  resumo,\n  resultado,\n  stdout_raw: stdout.substring(0, 2000),\n  stderr_raw: stderr.substring(0, 1000)\n}}];"
+                                     },
+                      "typeVersion":  2
+                  }
+              ],
+    "connections":  {
+                        "Config":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "node":  "Montar Comando",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Montar Comando":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Executar no AD",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Schedule 06h":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Config",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Executar no AD":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Processar Resultado",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           }
+                    },
+    "active":  false
+}

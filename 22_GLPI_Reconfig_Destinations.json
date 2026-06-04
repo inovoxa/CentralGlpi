@@ -1,0 +1,175 @@
+{
+  "name": "22_GLPI_Reconfig_Destinations",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF 22 v2 - Config Completa\n\nReconfigura destinations dos 25 forms com:\n- titlefield (titulo fixo)\n- contentfield_auto=true (conteudo automatico)\n- itilcategoryfield (categoria GLPI 15-40 por form)\n- typefield (Incidente/Solicitacao)\n- urgencyfield\n- impactfield\n- priorityfield\n- observerfield (last_valid_answer)\n- requesttypefield\n\nLoop sem timeout.",
+        "height": 360,
+        "width": 480,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        540
+      ],
+      "id": "note-22-001",
+      "name": "Documentacao"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "trg-22-001",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst baseUrl = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\nconst I_FORM = 'Glpi%5CForm%5CForm';\nconst I_DEST = 'Glpi%5CForm%5CDestination%5CFormDestination';\n\nconst MAPA = {\"Saude - Problemas de Acesso\":{\"categoria_glpi\":34,\"urgency\":3,\"priority\":3,\"type\":1,\"impact\":3},\"Criacao de Usuario\":{\"categoria_glpi\":15,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Instalacao de Software\":{\"categoria_glpi\":25,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Telefonia - Celular e Chip\":{\"categoria_glpi\":39,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Outros Assuntos de Rede\":{\"categoria_glpi\":32,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Telefonia - Outros\":{\"categoria_glpi\":40,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Saude - Novo Acesso\":{\"categoria_glpi\":35,\"urgency\":3,\"priority\":3,\"type\":1,\"impact\":3},\"Acesso a Pasta de Rede\":{\"categoria_glpi\":19,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Acesso Wi-Fi\":{\"categoria_glpi\":30,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Sem Conexao com a Internet\":{\"categoria_glpi\":29,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Cartucho ou Toner\":{\"categoria_glpi\":33,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Manutencao de Computador\":{\"categoria_glpi\":24,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Desativacao de Usuario\":{\"categoria_glpi\":18,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Transferencia de Setor ou Local\":{\"categoria_glpi\":22,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Criacao de E-mail Institucional\":{\"categoria_glpi\":20,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Manutencao de Impressoras\":{\"categoria_glpi\":23,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Internet Lenta ou Instavel\":{\"categoria_glpi\":28,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"VPN / Acesso Remoto\":{\"categoria_glpi\":31,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Saude - Solicitacoes Gerais\":{\"categoria_glpi\":36,\"urgency\":3,\"priority\":3,\"type\":1,\"impact\":3},\"Reset de Senha\":{\"categoria_glpi\":16,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Reativacao de Usuario\":{\"categoria_glpi\":17,\"urgency\":2,\"priority\":2,\"type\":2,\"impact\":2},\"Atualizacao de Software\":{\"categoria_glpi\":26,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Telefonia - Problemas com Ramal\":{\"categoria_glpi\":37,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Telefonia - Aparelho Telefonico\":{\"categoria_glpi\":38,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2},\"Reparacao de Software\":{\"categoria_glpi\":27,\"urgency\":2,\"priority\":2,\"type\":1,\"impact\":2}};\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst r0 = await callRaw('GET', `${baseUrl}/initSession`, {\n  'App-Token': appToken, 'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { erro: 'auth falhou' }}];\nconst H = { 'App-Token': appToken, 'Session-Token': r0.body.session_token };\n\nconst forms = await callRaw('GET', `${baseUrl}/${I_FORM}?range=0-200`, H);\nconst formsArr = Array.isArray(forms.body) ? forms.body : (forms.body.data || []);\nconst formIdToInfo = {};\nfor (const f of formsArr) {\n  if (f && f.is_deleted === 0 && MAPA[f.name]) {\n    formIdToInfo[f.id] = { nome: f.name, ...MAPA[f.name] };\n  }\n}\n\nconst dests = await callRaw('GET', `${baseUrl}/${I_DEST}?range=0-500`, H);\nconst destsArr = Array.isArray(dests.body) ? dests.body : (dests.body.data || []);\nconst items = [];\nfor (const d of destsArr) {\n  if (d && formIdToInfo[d.forms_forms_id]) {\n    items.push({\n      id: d.id,\n      forms_forms_id: d.forms_forms_id,\n      ...formIdToInfo[d.forms_forms_id]\n    });\n  }\n}\n\nawait callRaw('GET', `${baseUrl}/killSession`, H);\nreturn items.map(i => ({ json: i }));"
+      },
+      "id": "code-22-001",
+      "name": "Listar Destinations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-22-001",
+      "name": "Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst baseUrl = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\nconst I_DEST = 'Glpi%5CForm%5CDestination%5CFormDestination';\n\nasync function callRaw(method, url, headers, body) {\n  const opts = { method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true };\n  if (body !== undefined) opts.body = typeof body === 'string' ? body : JSON.stringify(body);\n  const resp = await helpers.httpRequest(opts);\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed, bodyRaw: typeof resp.body === 'string' ? resp.body.substring(0,400) : '' };\n}\n\nconst d = $input.first().json;\n\nconst r0 = await callRaw('GET', `${baseUrl}/initSession`, {\n  'App-Token': appToken, 'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { ...d, status: 'erro_auth' }}];\nconst H = { 'App-Token': appToken, 'Session-Token': r0.body.session_token, 'Content-Type': 'application/json' };\n\nconst cfg = {\n  'glpi-form-destination-commonitilfield-titlefield': {\n    value: `Solicitacao - ${d.nome}`\n  },\n  'glpi-form-destination-commonitilfield-contentfield_auto': true,\n  'glpi-form-destination-commonitilfield-itilcategoryfield': {\n    strategy: 'specific_value',\n    specific_question_id: null,\n    specific_itilcategories_id: d.categoria_glpi\n  },\n  'glpi-form-destination-commonitilfield-typefield': {\n    strategy: 'specific_value',\n    specific_question_id: null,\n    specific_type: d.type\n  },\n  'glpi-form-destination-commonitilfield-urgencyfield': {\n    strategy: 'specific_value',\n    specific_question_id: null,\n    specific_urgency: d.urgency\n  },\n  'glpi-form-destination-commonitilfield-impactfield': {\n    strategy: 'specific_value',\n    specific_question_id: null,\n    specific_impact: d.impact\n  },\n  'glpi-form-destination-commonitilfield-priorityfield': {\n    strategy: 'specific_value',\n    specific_question_id: null,\n    specific_priority: d.priority\n  },\n  'glpi-form-destination-commonitilfield-observerfield': {\n    strategies: ['last_valid_answer'],\n    specific_question_ids: [],\n    specific_itilactors_ids: []\n  },\n  'glpi-form-destination-commonitilfield-requesttypefield': {\n    strategy: 'specific_value',\n    specific_question_id: null,\n    specific_request_type: 1\n  },\n  'glpi-form-destination-commonitilfield-linkeditilobjectsfield': {\n    strategy_configs: [{\n      linktype: '', strategy: null, specific_itilobject: [],\n      specific_question_ids: [], specific_destination_ids: []\n    }]\n  }\n};\n\nconst body = {\n  input: {\n    id: d.id,\n    name: `Chamado - ${d.nome}`,\n    config: JSON.stringify(cfg)\n  }\n};\n\nconst r = await callRaw('PUT', `${baseUrl}/${I_DEST}/${d.id}`, H, body);\nawait callRaw('GET', `${baseUrl}/killSession`, H);\n\nreturn [{ json: {\n  ...d,\n  status: r.status < 400 ? 'reconfigurado' : `falha_${r.status}`,\n  erro: r.status >= 400 ? (r.bodyRaw || JSON.stringify(r.body)) : null\n}}];"
+      },
+      "id": "code-22-002",
+      "name": "Reconfigurar Destination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst ok = items.filter(x => x.status === 'reconfigurado').length;\nconst fail = items.filter(x => x.status && x.status.startsWith('falha')).length;\nreturn [{ json: {\n  sucesso: fail === 0,\n  total: items.length,\n  reconfigurados: ok,\n  falhas: fail,\n  items\n}}];\n"
+      },
+      "id": "code-22-003",
+      "name": "Resumo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        480
+      ],
+      "id": "bd1797df-de20-4aa1-952f-cdb19b90180b",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Carregar Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar Destinations": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop": {
+      "main": [
+        [
+          {
+            "node": "Resumo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reconfigurar Destination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconfigurar Destination": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          {
+            "node": "Listar Destinations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,78 @@
+{
+  "name": "26_GLPI_Inspecionar_Respostas_Form",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF26 v3 - Dump do conteudo CRU do chamado (debug)\n\nDespeja o HTML cru (sem remover tags) dos chamados 'Solicitacao - ' das ultimas 24h, para ver como o GLPI renderiza a resposta do campo perfil de referencia (campo 'tem_link_user' e 'trecho_perfil').\n\nPre-requisito: o campo perfil de referencia ja deve ser um DROPDOWN de usuario no formulario. Abra 1 chamado de teste escolhendo um colega e rode. Cole a saida.",
+        "height": 280,
+        "width": 480,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [ 220, 60 ],
+      "id": "note-26-0001",
+      "name": "Documentacao"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [ 240, 360 ],
+      "id": "trg-26-0001",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [ 460, 360 ],
+      "id": "pg-26-0001",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": { "id": "n4vFFnEj3QjMommF", "name": "GLPI PMA" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// WF26 v3 - Despeja o CONTEUDO CRU (HTML, sem remover tags) dos chamados de formulario\n// recentes, para ver como o GLPI renderiza a resposta do campo \"perfil de referencia\".\n// Objetivo: descobrir se o campo de usuario (dropdown) vem como link com o users_id\n// (ex: user.form.php?id=123) -\u003e aÃ­ o WF20 extrai o ID e resolve o login (Opcao A).\nconst helpers = this.helpers;\nconst baseV1 = \u0027https://suporte.araraquara.sp.gov.br/api.php/v1\u0027;\nconst appToken = $(\u0027Carregar Tokens\u0027).first().json.app_token;\nconst userToken = $(\u0027Carregar Tokens\u0027).first().json.user_token;\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, skipSslCertificateValidation: true });\n  let parsed = resp.body;\n  if (typeof parsed === \u0027string\u0027) { try { parsed = JSON.parse(parsed); } catch (_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst r0 = await callRaw(\u0027GET\u0027, `${baseV1}/initSession`, { \u0027App-Token\u0027: appToken, \u0027Authorization\u0027: `user_token ${userToken}` });\nif (r0.status !== 200 || !r0.body || !r0.body.session_token) {\n  return [{ json: { etapa: \u0027initSession\u0027, status: r0.status, body: r0.body } }];\n}\nconst H = { \u0027App-Token\u0027: appToken, \u0027Session-Token\u0027: r0.body.session_token };\n\n// Janela de 24h\nconst desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace(\u0027T\u0027, \u0027 \u0027).substring(0, 19);\nconst params = [\n  \u0027criteria[0][field]=15\u0027,\n  \u0027criteria[0][searchtype]=morethan\u0027,\n  `criteria[0][value]=${encodeURIComponent(desde)}`,\n  \u0027forcedisplay[0]=2\u0027,\n  \u0027forcedisplay[1]=1\u0027,\n  \u0027forcedisplay[2]=21\u0027,\n  \u0027forcedisplay[3]=15\u0027,\n  \u0027range=0-49\u0027,\n  \u0027sort=15\u0027,\n  \u0027order=DESC\u0027\n].join(\u0027\u0026\u0027);\n\nconst r = await callRaw(\u0027GET\u0027, `${baseV1}/search/Ticket?${params}`, H);\nconst data = (r.body \u0026\u0026 r.body.data) ? r.body.data : (Array.isArray(r.body) ? r.body : []);\ntry { await callRaw(\u0027GET\u0027, `${baseV1}/killSession`, H); } catch (_) {}\n\nconst result = [];\nfor (const t of data) {\n  const name = t[\u00271\u0027] || \u0027\u0027;\n  if (!name.startsWith(\u0027Solicitacao - \u0027)) continue;\n  const content = t[\u002721\u0027] || \u0027\u0027;\n  // recorta o trecho ao redor de \"perfil\" (se existir) para facilitar a leitura\n  let trecho_perfil = \u0027\u0027;\n  const idx = content.toLowerCase().indexOf(\u0027perfil\u0027);\n  if (idx !== -1) trecho_perfil = content.substring(Math.max(0, idx - 40), idx + 400);\n  result.push({\n    ticket_id: t[\u00272\u0027],\n    name,\n    date_creation: t[\u002715\u0027],\n    tem_link_user: /user\\.form\\.php\\?id=\\d+/i.test(content) || /users_id/i.test(content),\n    trecho_perfil,\n    content_raw: content\n  });\n}\n\nif (!result.length) return [{ json: { aviso: \u0027Nenhum chamado \"Solicitacao - \" nas ultimas 24h. Abra um chamado de teste e rode de novo.\u0027, total_tickets_janela: data.length } }];\nreturn result.map(x =\u003e ({ json: x }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 680, 360 ],
+      "id": "code-26-0001",
+      "name": "Inspecionar Conteudo",
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          { "node": "Carregar Tokens", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          { "node": "Inspecionar Conteudo", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "tags": []
+}

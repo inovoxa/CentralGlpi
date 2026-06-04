@@ -1,0 +1,95 @@
+{
+  "name": "24_GLPI_Inspecionar_Ticket",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF 24 - Inspecionar Ticket Recente\n\nBusca os 5 tickets mais recentes via API v2 e mostra:\n- id, name, content, category, urgency, impact, priority, type\n\nObjetivo: confirmar se a categoria esta sendo preenchida (apos config manual) e ver o formato do HTML que o GLPI 11 gera com contentfield_auto=true.\n\n**Antes:** crie um ticket de teste via formulario. Depois rode este WF.",
+        "height": 360,
+        "width": 480,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        460
+      ],
+      "id": "note-24-001",
+      "name": "Documentacao"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "trg-24-001",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// WF 24 v4 - Inspecionar 1 ticket especifico por ID\n// ALTERE A VARIAVEL TICKET_ID_ALVO ABAIXO para o ID que voce quer inspecionar\n\nconst TICKET_ID_ALVO = 2025000186;  // <-- TROQUE pelo ID real (ex: 2025000186)\n\nconst helpers = this.helpers;\nconst baseV1 = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst r0 = await callRaw('GET', `${baseV1}/initSession`, {\n  'App-Token': appToken, 'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { erro: 'auth falhou', body: r0.body }}];\nconst H = { 'App-Token': appToken, 'Session-Token': r0.body.session_token };\n\n// 1) Buscar ticket diretamente\nconst tk = await callRaw('GET', `${baseV1}/Ticket/${TICKET_ID_ALVO}`, H);\nconst ticket = tk.body;\n\n// 2) Buscar categoria pelo nome via search (forcedisplay 7)\nconst search = await callRaw('GET',\n  `${baseV1}/search/Ticket?criteria[0][field]=2&criteria[0][searchtype]=equals&criteria[0][value]=${TICKET_ID_ALVO}&forcedisplay[0]=2&forcedisplay[1]=1&forcedisplay[2]=7&forcedisplay[3]=15&forcedisplay[4]=21&forcedisplay[5]=12&forcedisplay[6]=80`,\n  H);\n\nawait callRaw('GET', `${baseV1}/killSession`, H);\n\nreturn [{ json: {\n  ticket_id: TICKET_ID_ALVO,\n  ticket_status: tk.status,\n  ticket_data: ticket,\n  search_result: search.body,\n  search_count: search.body && search.body.count,\n  search_data: search.body && search.body.data ? search.body.data[0] : null,\n  legenda_forcedisplay: {\n    '2': 'id',\n    '1': 'nome',\n    '7': 'categoria (caminho completo)',\n    '15': 'data_creation',\n    '21': 'content (HTML)',\n    '12': 'status',\n    '80': 'entidade'\n  }\n}}];"
+      },
+      "id": "code-24-001",
+      "name": "Inspecionar Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        480
+      ],
+      "id": "ba8468a5-3ee5-4015-9cee-f9f24c281c69",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Carregar Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          {
+            "node": "Inspecionar Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

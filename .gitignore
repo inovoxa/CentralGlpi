@@ -1,0 +1,24 @@
+# Dependências
+node_modules/
+backend/node_modules/
+
+# Segredos / ambiente (NUNCA versionar)
+.env
+.env.local
+.env.*.local
+**/.env
+!**/.env.example
+*.pem
+*.key
+
+# Configurações locais do Claude Code (mantém só as skills compartilhadas)
+.claude/settings.local.json
+
+# Logs e temporários
+*.log
+npm-debug.log*
+backend/_smoke.js
+
+# SO
+Thumbs.db
+.DS_Store

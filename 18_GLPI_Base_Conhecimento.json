@@ -1,0 +1,85 @@
+{
+  "name": "18_GLPI_Base_Conhecimento",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF18 - Base de Conhecimento (FAQ GLPI)\n\nSub-workflow chamado como ferramenta pelo Agente Principal (WF01) quando o usuario escolhe a opcao 3 do menu (Base de conhecimento).\n\nRecebe 'termo' (texto da duvida) e busca KnowbaseItem via API v1 (app_token/user_token de Carregar Tokens). Retorna { resposta }.",
+        "height": 260,
+        "width": 460,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [ 240, 60 ],
+      "id": "note-18-0001",
+      "name": "Documentacao"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "termo", "type": "string" },
+            { "name": "limit", "type": "number" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [ 240, 360 ],
+      "id": "trg-18-0001",
+      "name": "Quando chamado por outro workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [ 460, 360 ],
+      "id": "pg-18-0001",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": { "id": "n4vFFnEj3QjMommF", "name": "GLPI PMA" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// WF18 - Busca na Base de Conhecimento (KnowbaseItem) do GLPI via API v1\nconst helpers = this.helpers;\nconst baseV1 = \u0027https://suporte.araraquara.sp.gov.br/api.php/v1\u0027;\nconst appToken = $(\u0027Carregar Tokens\u0027).first().json.app_token;\nconst userToken = $(\u0027Carregar Tokens\u0027).first().json.user_token;\n\nconst inJson = $input.first().json || {};\nconst termo = String(inJson.termo || inJson.query || \u0027\u0027).trim();\nconst limit = Number(inJson.limit) \u003e 0 ? Number(inJson.limit) : 5;\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, skipSslCertificateValidation: true });\n  let parsed = resp.body;\n  if (typeof parsed === \u0027string\u0027) { try { parsed = JSON.parse(parsed); } catch (_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nif (!termo) {\n  return [{ json: { resposta: \u0027Por favor, descreva em poucas palavras o que voce quer pesquisar na base de conhecimento.\u0027 } }];\n}\n\nconst r0 = await callRaw(\u0027GET\u0027, `${baseV1}/initSession`, { \u0027App-Token\u0027: appToken, \u0027Authorization\u0027: `user_token ${userToken}` });\nif (r0.status !== 200 || !r0.body || !r0.body.session_token) {\n  return [{ json: { resposta: \u0027Nao consegui consultar a base de conhecimento agora. Tente novamente em instantes ou abra um chamado.\u0027 } }];\n}\nconst H = { \u0027App-Token\u0027: appToken, \u0027Session-Token\u0027: r0.body.session_token };\n\nasync function buscar(field) {\n  const url = `${baseV1}/KnowbaseItem?searchText[${field}]=${encodeURIComponent(termo)}\u0026range=0-${limit * 2}`;\n  const r = await callRaw(\u0027GET\u0027, url, H);\n  return Array.isArray(r.body) ? r.body : (r.body \u0026\u0026 r.body.data ? r.body.data : []);\n}\n\nlet itens = [];\ntry { itens = itens.concat(await buscar(\u0027name\u0027)); } catch (_) {}\ntry { itens = itens.concat(await buscar(\u0027answer\u0027)); } catch (_) {}\ntry { await callRaw(\u0027GET\u0027, `${baseV1}/killSession`, H); } catch (_) {}\n\nconst vistos = {};\nconst unicos = [];\nfor (const it of itens) {\n  if (it \u0026\u0026 it.id \u0026\u0026 !vistos[it.id]) { vistos[it.id] = 1; unicos.push(it); }\n}\n\nif (!unicos.length) {\n  return [{ json: { resposta: `Nao encontrei artigos na base de conhecimento sobre \"${termo}\". Se preferir, posso abrir um chamado para voce ser atendido.` } }];\n}\n\nconst top = unicos.slice(0, limit).map((it, i) =\u003e {\n  const titulo = String(it.name || \u0027Artigo\u0027);\n  let corpo = String(it.answer || \u0027\u0027).replace(/\u003c[^\u003e]+\u003e/g, \u0027 \u0027).replace(/\u0026nbsp;/g, \u0027 \u0027).replace(/\u0026amp;/g, \u0027\u0026\u0027).replace(/\\s+/g, \u0027 \u0027).trim();\n  if (corpo.length \u003e 500) corpo = corpo.substring(0, 500) + \u0027...\u0027;\n  return `${i + 1}. *${titulo}*\\n${corpo}`;\n}).join(\u0027\\n\\n\u0027);\n\nreturn [{ json: { resposta: `Encontrei na base de conhecimento do GLPI:\\n\\n${top}\\n\\nSe nao resolver, posso abrir um chamado para voce.` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 680, 360 ],
+      "id": "code-18-0001",
+      "name": "Buscar KB",
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Quando chamado por outro workflow": {
+      "main": [
+        [
+          { "node": "Carregar Tokens", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          { "node": "Buscar KB", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "tags": []
+}

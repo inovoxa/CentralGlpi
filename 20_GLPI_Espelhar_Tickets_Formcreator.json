@@ -1,0 +1,380 @@
+{
+  "name": "20_GLPI_Espelhar_Tickets_Formcreator",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF 20 v2 - Espelhar Tickets Formulario -> chamados_log\n\nScheduler a cada 5 min que detecta tickets criados pelos 25 formularios do GLPI 11 Form Editor e popula a tabela chamados_log para o WF 14 (Executar AD) processar.\n\n**Logica:**\n1. Busca tickets criados nas ultimas 6h via API v1 com criteria date_creation > hoje\n2. Filtra apenas categorias com automacao AD (15-22 e 34-40)\n3. Para cada ticket sem registro em chamados_log:\n   - Extrai os campos do HTML usando regex <b>N) Label</b>: Valor<br>\n   - Normaliza labels para nomes esperados pelo WF 14\n   - Insere em chamados_log com dados_solicitacao JSON",
+        "height": 400,
+        "width": 600,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        256,
+        48
+      ],
+      "id": "9d2aab8f-8bc2-4156-a57c-1eccaab81bda",
+      "name": "Documentacao"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        256,
+        544
+      ],
+      "id": "4bd26fb7-716c-492e-b794-c6e1e73ffaba",
+      "name": "Schedule a cada 5min"
+    },
+    {
+      "parameters": {
+        "jsCode": "// WF 20 v2 - Busca tickets recentes via API v1\n// (cat_text vem vazio nesta build do GLPI 11; fallback no Extrair Dados deriva categoria do nome do form)\nconst helpers = this.helpers;\nconst baseV1 = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, skipSslCertificateValidation: true });\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst r0 = await callRaw('GET', `${baseV1}/initSession`, {\n  'App-Token': appToken, 'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { __debug: true, etapa: 'initSession_falhou', status: r0.status, body: r0.body }}];\nconst H = { 'App-Token': appToken, 'Session-Token': r0.body.session_token };\n\n// Janela de 6h\nconst seisHorasAtras = new Date(Date.now() - 6*60*60*1000).toISOString().replace('T', ' ').substring(0, 19);\n\n// searchOptions IDs: 2=id, 1=name, 7=category, 15=date_creation, 21=content, 12=status\nconst params = [\n  'criteria[0][field]=15',\n  'criteria[0][searchtype]=morethan',\n  `criteria[0][value]=${encodeURIComponent(seisHorasAtras)}`,\n  'forcedisplay[0]=2',\n  'forcedisplay[1]=1',\n  'forcedisplay[2]=7',\n  'forcedisplay[3]=15',\n  'forcedisplay[4]=21',\n  'forcedisplay[5]=12',\n  'range=0-99',\n  'sort=15',\n  'order=DESC'\n].join('&');\n\nconst r = await callRaw('GET', `${baseV1}/search/Ticket?${params}`, H);\nconst data = (r.body && r.body.data) ? r.body.data : (Array.isArray(r.body) ? r.body : []);\n\nawait callRaw('GET', `${baseV1}/killSession`, H);\n\n// Filtra os gerados por formulario (nome inicia com 'Solicitacao - ')\nconst result = [];\nfor (const t of data) {\n  const name = t['1'] || '';\n  if (!name.startsWith('Solicitacao - ')) continue;\n  result.push({\n    ticket_id: t['2'],\n    name,\n    cat_text: t['7'] || '',\n    date_creation: t['15'],\n    content: t['21'] || '',\n    status: t['12']\n  });\n}\n\nreturn result.map(t => ({ json: t }));\n"
+      },
+      "id": "124b59b6-b46b-49e1-8b38-074f41bf19fb",
+      "name": "Buscar Tickets Recentes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-nao-fechado",
+              "leftValue": "={{ Number($json.status) }}",
+              "rightValue": 6,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        544
+      ],
+      "id": "f1l7e4-status-fechado-001",
+      "name": "Ignorar Fechados",
+      "notesInFlow": true,
+      "notes": "Bloqueia chamados com status=6 (Fechado). Status GLPI: 1=Novo, 2=Em atendimento atribuido, 3=Em atendimento planejado, 4=Pendente, 5=Resolvido, 6=Fechado."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT {{ $json.ticket_id }}::bigint AS source_ticket_id,\n       EXISTS(SELECT 1 FROM glpi_n8n.chamados_log WHERE glpi_ticket_id = {{ $json.ticket_id }}) AS ja_existe;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        928,
+        544
+      ],
+      "id": "5143bb9f-ae9a-4b9a-bd27-ad659676696b",
+      "name": "Verifica se ja logado",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-novo",
+              "leftValue": "={{ $json.ja_existe }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1152,
+        544
+      ],
+      "id": "b4fecb3f-21cd-465d-bc64-b8498dfbc214",
+      "name": "E novo?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrai dados do HTML do GLPI 11 Form Editor e normaliza para chaves esperadas pelo WF 14\n// Busca o ticket original via source_ticket_id (passado pelo node 'Verifica se ja logado'),\n// porque .item nao funciona aqui: o Filter + Postgres no caminho quebram o pairedItem tracking.\nconst sourceId = Number($input.first().json.source_ticket_id);\nconst t = $('Buscar Tickets Recentes').all().map(i => i.json).find(x => Number(x.ticket_id) === sourceId);\nif (!t) throw new Error('Ticket original nao encontrado em Buscar Tickets Recentes para source_ticket_id=' + sourceId);\nconst html = t.content || '';\n\n// Regex: <b>N) Label</b>: Valor<br>  (com tolerancia a espacos e variacoes)\nconst regex = /<b>\\d+\\)\\s*([^<]+?)<\\/b>\\s*:\\s*([\\s\\S]*?)(?=<br|<\\/p|<h2)/g;\nconst dados = {};\nlet match;\nwhile ((match = regex.exec(html)) !== null) {\n  const label = match[1].trim();\n  // Limpa o valor: remove tags HTML internas\n  let valor = match[2].replace(/<[^>]+>/g, '').trim();\n  // Normaliza label para chave\n  const key = label.toLowerCase()\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/[^a-z0-9]+/g, '_')\n    .replace(/^_+|_+$/g, '');\n  if (key && valor !== undefined) dados[key] = valor;\n}\n\n// Aliases: mapeia chaves longas/normalizadas para os nomes que o WF 14 espera\nconst aliasMap = {\n  'nome_completo_do_colaborador': 'nome_completo',\n  'nome_completo_do_titular_do_e_mail': 'nome_completo',\n  'nome_completo': 'nome_completo',\n  'data_de_nascimento_dd_mm_aaaa': 'data_nascimento',\n  'data_de_nascimento': 'data_nascimento',\n  'cpf_11_digitos_somente_numeros': 'cpf',\n  'cpf_11_digitos': 'cpf',\n  'celular_com_ddd': 'celular',\n  'matricula_funcional': 'matricula',\n  'data_de_admissao_dd_mm_aaaa': 'data_admissao',\n  'data_de_admissao': 'data_admissao',\n  'secretaria': 'secretaria',\n  'secretaria_nova': 'secretaria',\n  'coordenadoria': 'coordenadoria',\n  'coordenadoria_nova': 'coordenadoria',\n  'gerencia_ou_nao_se_aplica': 'gerencia',\n  'gerencia_opcional': 'gerencia',\n  'gerencia_nova_opcional': 'gerencia',\n  'gerencia': 'gerencia',\n  'nome_do_local_unidade_onde_trabalhara': 'unidade',\n  'nome_do_local_unidade_onde_trabalha': 'unidade',\n  'nova_unidade_local_de_trabalho': 'unidade',\n  'local_unidade': 'unidade',\n  'nome_do_local_unidade': 'unidade',\n  'cbo_cargo': 'cbo',\n  'cbo_cargo_atualizado': 'cbo',\n  'cbo_cargo_no_novo_setor': 'cbo',\n  'e_mail_pessoal_do_colaborador': 'email_pessoal',\n  'e_mail_pessoal': 'email_pessoal',\n  'e_mail_do_superior_direto_deve_ser_araraquara_sp_gov_br': 'email_superior',\n  'e_mail_do_novo_superior_direto_araraquara_sp_gov_br': 'email_superior',\n  'superior_direto': 'email_superior',\n  'superior_imediato': 'email_superior',\n  'login_do_superior_direto': 'email_superior',\n  'login_do_superior_imediato': 'email_superior',\n  'o_colaborador_e_estagiario': 'usuario_estagiario',\n  'para_qual_sistema_o_acesso_sera_criado_ex_usuario_de_rede_faa_pec_formsus': 'qual_sistema',\n  'para_qual_sistema': 'qual_sistema',\n  'login_de_um_colega_que_ja_possua_o_perfil_desejado': 'perfil_referencia',\n  'login_de_um_colega_do_novo_setor_com_o_perfil_desejado': 'perfil_referencia',\n  'qual_o_perfil_de_referencia_login_ou_nome_de_um_colega_que_ja_tenha_o_perfil': 'perfil_referencia',\n  'selecione_um_colega_que_ja_possua_o_perfil_desejado': 'perfil_referencia',\n  'selecione_um_colega_do_novo_setor_com_o_perfil_desejado': 'perfil_referencia',\n  'numero_do_processo_1doc_opcional_ex_proc_administrativo_28_491_2026': 'numero_processo',\n  'numero_do_processo_administrativo_opcional': 'numero_processo',\n  'login_do_usuario_que_tera_a_senha_resetada': 'login_usuario_reset',\n  'login_do_usuario_a_reativar': 'login_usuario_reativar',\n  'login_do_usuario_a_desativar': 'login_usuario_desativar',\n  'login_do_usuario_a_transferir': 'login_usuario_transferir',\n  'login_do_usuario_que_precisa_do_acesso': 'login_solicitante',\n  'login_usuario_de_rede_samaccountname_no_ad_ja_deve_existir': 'nome_usuario',\n  'login_usuario_de_rede_samaccountname_no_ad': 'nome_usuario',\n  'nome_ou_caminho_completo_da_pasta_de_rede_ex_srv01_saude_atendimento': 'caminho_pasta',\n  'nome_ou_caminho_da_pasta_de_rede': 'caminho_pasta',\n  'caminho_pasta': 'caminho_pasta',\n  'tipo_de_acesso_solicitado': 'tipo_acesso',\n  'motivo_justificativa_do_acesso': 'motivo_acesso',\n  'motivo_da_desativacao': 'motivo_desativacao',\n  'motivo_da_transferencia': 'motivo_transferencia',\n  'motivo_do_reset_esqueceu_suspeita_de_comprometimento_politica_de_seguranca': 'motivo_reset',\n  'justificativa_para_criacao_do_e_mail_institucional': 'motivo_email',\n  'novo_setor_de_destino': 'novo_setor',\n  'novo_local_de_trabalho': 'novo_local'\n};\nfor (const [k, alias] of Object.entries(aliasMap)) {\n  if (dados[k] !== undefined && dados[alias] === undefined) {\n    dados[alias] = dados[k];\n  }\n}\n\n// Fallback heuristico: se ainda nao temos as chaves criticas, varre as chaves do form\n// procurando por palavras-chave. Cobre mudancas futuras de label sem precisar atualizar aliasMap.\nfunction _matchKey(allKeys, ...needles) {\n  for (const k of allKeys) {\n    if (needles.every(n => k.indexOf(n) !== -1)) return k;\n  }\n  return null;\n}\nconst _todasChaves = Object.keys(dados);\nif (dados.perfil_referencia === undefined) {\n  const k = _matchKey(_todasChaves, 'perfil', 'referencia');\n  if (k) dados.perfil_referencia = dados[k];\n}\nif (dados.email_superior === undefined) {\n  const k = _matchKey(_todasChaves, 'superior');\n  if (k) dados.email_superior = dados[k];\n}\n\n// Normaliza perfil_referencia para o login (username), nunca o nome completo.\n// Se o GLPI gravar algo como 'Fulano de Tal (fulano.tal)', extrai o login entre parenteses;\n// caso contrario mantem o texto (o script AD ainda casa por Name -like como fallback).\nif (dados.perfil_referencia) {\n  let pr = String(dados.perfil_referencia).trim();\n  const paren = pr.match(/\\(([^)]+)\\)\\s*$/);\n  if (paren) pr = paren[1].trim();\n  dados.perfil_referencia = pr;\n}\n\n// Origem e conversa_id sentinel (formularios nao tem conversa Chatwoot)\ndados.origem = 'formcreator';\ndados.conversa_id = `formcreator-${t.ticket_id}`;\n\n// Categoria GLPI: extrair do cat_text se possivel (formato tipo 'UsuÃ¡rios e Acessos > CriaÃ§Ã£o de usuÃ¡rio')\n// Mapa nome->id baseado no setup_completo.sql\nconst nomeParaCat = {\n  'CriaÃ§Ã£o de usuÃ¡rio': 15, 'Reset de senha usuÃ¡rio': 16, 'ReativaÃ§Ã£o de usuÃ¡rio': 17,\n  'DesativaÃ§Ã£o de usuÃ¡rio': 18, 'Acesso Ã  pasta de rede': 19, 'CriaÃ§Ã£o de E-mail': 20,\n  'TransferÃªncia de Setor': 22,\n  'ManutenÃ§Ã£o de impressoras': 23, 'ManutenÃ§Ã£o de computador': 24, 'InstalaÃ§Ã£o de software': 25,\n  'AtualizaÃ§Ã£o de software': 26, 'ReparaÃ§Ã£o de software': 27, 'Internet lenta ou instÃ¡vel': 28,\n  'Sem conexÃ£o com a internet': 29, 'Acesso Wi-Fi': 30, 'VPN ou Acesso remoto': 31,\n  'Outros assuntos de rede': 32, 'Cartucho ou toner': 33,\n  'Problemas de acesso sistema': 34, 'Novo acesso': 35, 'SolicitaÃ§Ãµes gerais': 36,\n  'Problemas com ramal': 37, 'Aparelho telefÃ´nico': 38, 'Celular e Chip': 39, 'Outros': 40\n};\nlet categoria_id = null;\nif (t.cat_text) {\n  const parts = t.cat_text.split('>').map(s => s.trim());\n  const last = parts[parts.length - 1];\n  if (nomeParaCat[last]) categoria_id = nomeParaCat[last];\n}\n\n// Fallback: deriva a categoria pelo nome do form embutido no titulo do ticket\n// (cobre tickets criados antes do WF22 ou quando destination ficou sem itilcategoryfield).\nif (categoria_id === null && t.name && t.name.indexOf('Solicitacao - ') === 0) {\n  const nomeForm = t.name.substring('Solicitacao - '.length).trim();\n  const formNameToCat = {\n    'Criacao de Usuario': 15, 'Reset de Senha': 16, 'Reativacao de Usuario': 17,\n    'Desativacao de Usuario': 18, 'Acesso a Pasta de Rede': 19,\n    'Criacao de E-mail Institucional': 20, 'Transferencia de Setor ou Local': 22,\n    'Manutencao de Impressoras': 23, 'Manutencao de Computador': 24,\n    'Instalacao de Software': 25, 'Atualizacao de Software': 26,\n    'Reparacao de Software': 27, 'Internet Lenta ou Instavel': 28,\n    'Sem Conexao com a Internet': 29, 'Acesso Wi-Fi': 30,\n    'VPN / Acesso Remoto': 31, 'Outros Assuntos de Rede': 32, 'Cartucho ou Toner': 33,\n    'Saude - Problemas de Acesso': 34, 'Saude - Novo Acesso': 35, 'Saude - Solicitacoes Gerais': 36,\n    'Telefonia - Problemas com Ramal': 37, 'Telefonia - Aparelho Telefonico': 38,\n    'Telefonia - Celular e Chip': 39, 'Telefonia - Outros': 40\n  };\n  if (formNameToCat[nomeForm]) categoria_id = formNameToCat[nomeForm];\n}\n\nreturn [{ json: {\n  ticket_id: t.ticket_id,\n  ticket_name: t.name,\n  ticket_url: `https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id=${t.ticket_id}`,\n  category_id: categoria_id,\n  cat_text: t.cat_text,\n  date_creation: t.date_creation,\n  status: t.status,\n  dados_solicitacao: dados,\n  dados_json: JSON.stringify(dados)\n}}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        496
+      ],
+      "id": "12db73f8-4f31-4b46-9a0d-34813a654e1e",
+      "name": "Extrair Dados",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO glpi_n8n.chamados_log\n  (conversa_id, glpi_ticket_id, glpi_ticket_url, titulo, menu_numero, menu_descricao,\n   solicitante_nome, solicitante_email, glpi_category_id, prioridade, resposta_glpi, dados_solicitacao, superior_whatsapp)\nVALUES (\n  $1, $2, $3, $4, $5, $6, $7, $8, $9, 2, '{}'::jsonb, $10::jsonb, $11\n)\nON CONFLICT (glpi_ticket_id) DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.dados_solicitacao.conversa_id,\n  $json.ticket_id,\n  $json.ticket_url,\n  $json.ticket_name,\n  ( $json.category_id >= 15 && $json.category_id <= 22 ) ? 1 : ( ($json.category_id >= 23 && $json.category_id <= 33) ? 2 : ( ($json.category_id >= 34 && $json.category_id <= 36) ? 3 : 4 ) ),\n  '[Formulario] ' + ($json.ticket_name || ''),\n  $json.dados_solicitacao.nome_completo || $json.dados_solicitacao.nome_solicitante || '',\n  $json.dados_solicitacao.email_pessoal || $json.dados_solicitacao.email_unidade || $json.dados_solicitacao.email_institucional || '',\n  $json.category_id,\n  $json.dados_json,\n  $json.superior_whatsapp || ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1584,
+        496
+      ],
+      "id": "a82ac881-f612-4c81-88b8-8161c7324b02",
+      "name": "Inserir em chamados_log",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "skip-1",
+              "name": "status",
+              "type": "string",
+              "value": "ja_existe"
+            },
+            {
+              "id": "skip-2",
+              "name": "ticket_id",
+              "type": "number",
+              "value": "={{ $json.source_ticket_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        672
+      ],
+      "id": "d4ffa2d1-d8ad-47ba-b045-56c26ce3c28f",
+      "name": "Ja Existe"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url, chatwoot_url, chatwoot_token\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        456,
+        724
+      ],
+      "id": "ace47cab-b0b9-4d57-9d14-470a0c945a8b",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    }
+,
+    {
+      "parameters": {
+        "jsCode":"const helpers = this.helpers;\nconst baseV1 = \u0027https://suporte.araraquara.sp.gov.br/api.php/v1\u0027;\nconst appToken = $(\u0027Carregar Tokens\u0027).first().json.app_token;\nconst userToken = $(\u0027Carregar Tokens\u0027).first().json.user_token;\n\nconst item = $input.first().json;\nconst dados = item.dados_solicitacao || {};\nconst emailSuperior = (dados.email_superior || \u0027\u0027).trim();\nconst catId = Number(item.category_id);\nconst ehAprovacao = [15, 16, 17, 18, 19, 20, 22].indexOf(catId) !== -1;\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, skipSslCertificateValidation: true });\n  let parsed = resp.body;\n  if (typeof parsed === \u0027string\u0027) { try { parsed = JSON.parse(parsed); } catch (_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\nfunction norm(s) { return String(s || \u0027\u0027).toLowerCase().replace(/\\s+/g, \u0027 \u0027).trim(); }\n\nlet mobileRaw = \u0027\u0027;\nlet lookupDebug = \u0027\u0027;\nlet perfilDebug = \u0027\u0027;\nlet H = null;\n\nif (ehAprovacao) {\n  try {\n    const r0 = await callRaw(\u0027GET\u0027, `${baseV1}/initSession`, { \u0027App-Token\u0027: appToken, \u0027Authorization\u0027: `user_token ${userToken}` });\n    if (r0.status === 200 \u0026\u0026 r0.body \u0026\u0026 r0.body.session_token) {\n      H = { \u0027App-Token\u0027: appToken, \u0027Session-Token\u0027: r0.body.session_token };\n    } else { lookupDebug = \u0027initSession_falhou\u0027; }\n  } catch (e) { lookupDebug = \u0027erro_init:\u0027 + String(e \u0026\u0026 e.message ? e.message : e); }\n}\n\n// 1) Mobile do superior (por email_superior)\nif (H \u0026\u0026 emailSuperior) {\n  try {\n    const re = await callRaw(\u0027GET\u0027, `${baseV1}/UserEmail?searchText[email]=${encodeURIComponent(emailSuperior)}\u0026range=0-50`, H);\n    const arr = Array.isArray(re.body) ? re.body : (re.body \u0026\u0026 re.body.data ? re.body.data : []);\n    let match = arr.find(u =\u003e (u.email || \u0027\u0027).toLowerCase() === emailSuperior.toLowerCase());\n    if (!match \u0026\u0026 arr.length) match = arr[0];\n    const usersId = match ? match.users_id : null;\n    if (usersId) {\n      const ru = await callRaw(\u0027GET\u0027, `${baseV1}/User/${usersId}`, H);\n      const u = ru.body || {};\n      mobileRaw = u.mobile || u.phone || u.phone2 || \u0027\u0027;\n      if (!mobileRaw) lookupDebug = \u0027superior_sem_mobile_no_glpi\u0027;\n    } else { lookupDebug = \u0027superior_nao_encontrado_por_email\u0027; }\n  } catch (e) { lookupDebug = \u0027erro:\u0027 + String(e \u0026\u0026 e.message ? e.message : e); }\n}\n\n// 2) perfil_referencia: nome completo (do dropdown do GLPI) -\u003e login (campo name no GLPI)\nif (H \u0026\u0026 dados.perfil_referencia) {\n  const nome = String(dados.perfil_referencia).trim();\n  if (/\\s/.test(nome)) {\n    try {\n      const alvo = norm(nome);\n      const partes = nome.split(/\\s+/);\n      async function buscar(campo, valor) {\n        const r = await callRaw(\u0027GET\u0027, `${baseV1}/User?searchText[${campo}]=${encodeURIComponent(valor)}\u0026range=0-100`, H);\n        return Array.isArray(r.body) ? r.body : (r.body \u0026\u0026 r.body.data ? r.body.data : []);\n      }\n      function achar(cands) {\n        for (const u of cands) {\n          const fn = norm(u.firstname), rn = norm(u.realname);\n          if (`${fn} ${rn}` === alvo || `${rn} ${fn}` === alvo) return u;\n        }\n        return null;\n      }\n      let cands = await buscar(\u0027realname\u0027, partes[partes.length - 1]);\n      let achado = achar(cands);\n      if (!achado) {\n        cands = await buscar(\u0027firstname\u0027, partes[0]);\n        achado = achar(cands);\n        if (!achado \u0026\u0026 cands.length === 1) achado = cands[0];\n      }\n      if (achado \u0026\u0026 achado.name) { dados.perfil_referencia = achado.name; perfilDebug = \u0027resolvido:\u0027 + achado.name; }\n      else { perfilDebug = \u0027nao_resolvido_mantido_nome\u0027; }\n    } catch (e) { perfilDebug = \u0027erro:\u0027 + String(e \u0026\u0026 e.message ? e.message : e); }\n  } else { perfilDebug = \u0027ja_era_login\u0027; }\n}\n\nif (H) { try { await callRaw(\u0027GET\u0027, `${baseV1}/killSession`, H); } catch (_) {} }\n\n// Normaliza mobile -\u003e +55DDDNUMERO\nlet digits = String(mobileRaw || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\nlet superiorWhatsapp = \u0027\u0027;\nif (digits.length === 10 || digits.length === 11) {\n  superiorWhatsapp = \u0027+55\u0027 + digits;\n} else if ((digits.length === 12 || digits.length === 13) \u0026\u0026 digits.indexOf(\u002755\u0027) === 0) {\n  superiorWhatsapp = \u0027+\u0027 + digits;\n}\n\n// Re-serializa dados (perfil_referencia pode ter virado login)\nitem.dados_solicitacao = dados;\nitem.dados_json = JSON.stringify(dados);\n\nreturn [{ json: Object.assign({}, item, {\n  superior_email: emailSuperior,\n  superior_mobile_raw: mobileRaw,\n  superior_whatsapp: superiorWhatsapp,\n  eh_aprovacao: ehAprovacao,\n  superior_lookup_debug: lookupDebug,\n  perfil_debug: perfilDebug\n}) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        400
+      ],
+      "id": "res-sup-00000000-0000-0000-0000-000000000001",
+      "name": "Resolver Superior",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-wpp",
+              "leftValue": "={{ $json.superior_whatsapp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "cond-aprov",
+              "leftValue": "={{ $json.eh_aprovacao }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1712,
+        640
+      ],
+      "id": "if-aviso-00000000-0000-0000-0000-000000000002",
+      "name": "Enviar aviso?"
+    },
+    {
+      "parameters": {
+        "jsCode":"const helpers = this.helpers;\nconst cw = $(\u0027Carregar Tokens\u0027).first().json;\nconst base = String(cw.chatwoot_url || \u0027\u0027).replace(/\\/+$/, \u0027\u0027);\nconst token = cw.chatwoot_token || \u0027\u0027;\nconst ACCOUNT = 1;\nconst INBOX = 7;\n\nconst j = $input.first().json;\nconst phone = j.superior_whatsapp;\nconst ticketId = j.ticket_id;\nconst titulo = String(j.ticket_name || \u0027\u0027).replace(/^Solicitacao - /, \u0027\u0027);\nconst url = j.ticket_url;\nconst conteudo = \u0027\\u{1F4CB} Ha uma solicitacao aguardando sua aprovacao no GLPI.\\n\u0027 +\n  \u0027Chamado #\u0027 + ticketId + \u0027 - \u0027 + titulo + \u0027\\n\u0027 +\n  \u0027Aprove em: \u0027 + url;\n\nasync function cwApi(method, path, body) {\n  const opts = { method, url: base + \u0027/api/v1/accounts/\u0027 + ACCOUNT + path, headers: { \u0027api_access_token\u0027: token, \u0027Content-Type\u0027: \u0027application/json\u0027 }, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true };\n  if (body !== undefined) opts.body = JSON.stringify(body);\n  const r = await helpers.httpRequest(opts);\n  let b = r.body;\n  if (typeof b === \u0027string\u0027) { try { b = JSON.parse(b); } catch (_) {} }\n  return { status: r.statusCode || r.status, body: b };\n}\n\nconst resultado = { ticket_id: ticketId, phone: phone };\nif (!base || !token || !phone) {\n  resultado.sucesso = false;\n  resultado.erro = \u0027chatwoot_url/token ou telefone do superior ausente\u0027;\n  return [{ json: resultado }];\n}\ntry {\n  let contactId = null;\n  let sourceId = null;\n  const s = await cwApi(\u0027GET\u0027, \u0027/contacts/search?q=\u0027 + encodeURIComponent(phone));\n  const found = (s.body \u0026\u0026 s.body.payload) ? s.body.payload : [];\n  if (found.length) {\n    contactId = found[0].id;\n    const cis = found[0].contact_inboxes || [];\n    const ci = cis.find(x =\u003e String((x.inbox \u0026\u0026 x.inbox.id) || x.inbox_id) === String(INBOX));\n    if (ci) sourceId = ci.source_id;\n  }\n  if (!contactId) {\n    const c = await cwApi(\u0027POST\u0027, \u0027/contacts\u0027, { inbox_id: INBOX, name: phone, phone_number: phone });\n    const p = (c.body \u0026\u0026 c.body.payload) ? c.body.payload : c.body;\n    contactId = p \u0026\u0026 (p.contact ? p.contact.id : p.id);\n    const ci = p \u0026\u0026 p.contact_inbox;\n    if (ci) sourceId = ci.source_id;\n  }\n  if (contactId \u0026\u0026 !sourceId) {\n    const ci = await cwApi(\u0027POST\u0027, \u0027/contacts/\u0027 + contactId + \u0027/contact_inboxes\u0027, { inbox_id: INBOX });\n    sourceId = ci.body \u0026\u0026 (ci.body.source_id || (ci.body.payload \u0026\u0026 ci.body.payload.source_id));\n  }\n  const conv = await cwApi(\u0027POST\u0027, \u0027/conversations\u0027, { source_id: sourceId, inbox_id: INBOX, contact_id: contactId });\n  const convId = conv.body \u0026\u0026 (conv.body.id || (conv.body.payload \u0026\u0026 conv.body.payload.id));\n  const msg = await cwApi(\u0027POST\u0027, \u0027/conversations/\u0027 + convId + \u0027/messages\u0027, { content: conteudo, message_type: \u0027outgoing\u0027 });\n  resultado.sucesso = msg.status \u003e= 200 \u0026\u0026 msg.status \u003c 300;\n  resultado.conversation_id = convId;\n  resultado.contact_id = contactId;\n  resultado.status_msg = msg.status;\n} catch (e) {\n  resultado.sucesso = false;\n  resultado.erro = String(e \u0026\u0026 e.message ? e.message : e);\n}\nreturn [{ json: resultado }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        640
+      ],
+      "id": "env-aviso-00000000-0000-0000-0000-000000000003",
+      "name": "Enviar Aviso Superior",
+      "onError": "continueRegularOutput"
+    }  ],
+  "pinData": {},
+  "connections": {
+    "Schedule a cada 5min": {
+      "main": [
+        [
+          { "node": "Carregar Tokens", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          { "node": "Buscar Tickets Recentes", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Buscar Tickets Recentes": {
+      "main": [
+        [
+          { "node": "Ignorar Fechados", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Ignorar Fechados": {
+      "main": [
+        [
+          { "node": "Verifica se ja logado", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Verifica se ja logado": {
+      "main": [
+        [
+          { "node": "E novo?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "E novo?": {
+      "main": [
+        [
+          { "node": "Extrair Dados", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Ja Existe", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Extrair Dados": {
+      "main": [
+        [
+          { "node": "Resolver Superior", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Resolver Superior": {
+      "main": [
+        [
+          { "node": "Inserir em chamados_log", "type": "main", "index": 0 },
+          { "node": "Enviar aviso?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Enviar aviso?": {
+      "main": [
+        [
+          { "node": "Enviar Aviso Superior", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "17cff3c4-9767-4349-beff-cc10185920cc",
+  "meta": {
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "sKe9WYgJqgHzMaww",
+  "tags": []
+}

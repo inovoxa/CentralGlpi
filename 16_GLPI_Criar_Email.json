@@ -1,0 +1,304 @@
+{
+  "name": "16_GLPI_Criar_Email",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "conversa_id"
+            },
+            {
+              "name": "nome_completo"
+            },
+            {
+              "name": "nome_usuario"
+            },
+            {
+              "name": "motivo_email"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        112,
+        192
+      ],
+      "id": "8bee925e-b987-4ecb-a0d9-64a395437cf6",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7WhIDdlVLWRtNCo0",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7WhIDdlVLWRtNCo0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        336,
+        192
+      ],
+      "id": "ea5564b5-68de-486f-a93b-789b802349e9",
+      "name": "Chamar Auth"
+    },
+    {
+      "parameters": {
+        "jsCode": "const safe = (s) => (s || '').replace(/'/g, \"''\");\nconst d = $('Trigger').item.json;\nconst html = [\n  '<p><strong>SOLICITAÇÃO DE CRIAÇÃO DE E-MAIL INSTITUCIONAL</strong></p>',\n  '<p><strong>Nome Completo:</strong> ' + safe(d.nome_completo) + '</p>',\n  '<p><strong>Nome de Usuário (Login):</strong> ' + safe(d.nome_usuario) + '</p>',\n  '<p><strong>Motivo da Solicitação:</strong> ' + safe(d.motivo_email) + '</p>',\n  '<p><em>Declaração: Declaro ser titular ou responsável hierárquico pelas informações acima.</em></p>'\n].join('\\n');\nreturn [{ json: { html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        192
+      ],
+      "id": "5d3c6a4f-cff0-4bcb-8832-38c1c1360466",
+      "name": "Montar HTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const safe = (s) => (s || '').replace(/'/g, \"''\");\nconst d = $('Trigger').item.json;\nreturn [{ json: {\n  titulo: 'CRIAÇÃO DE E-MAIL INSTITUCIONAL - ' + safe(d.nome_completo) + ' - ' + safe(d.nome_usuario),\n  html: $('Montar HTML').item.json.html\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        416
+      ],
+      "id": "954f75d7-deba-4738-b5e8-905255656988",
+      "name": "Montar Título"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({name: $('Montar Título').item.json.titulo, content: $('Montar Título').item.json.html, type: 2, status: 1, urgency: 2, impact: 2, priority: 2, category: 20, request_type: 3}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        752,
+        208
+      ],
+      "id": "a23d7b85-21d5-4419-a54a-37db75787392",
+      "name": "Criar Chamado GLPI"
+    },
+    {
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst userId = $(\"Buscar Usuario ID\").item.json.userId;\nconst userMobile = $(\"Buscar Usuario ID\").item.json.userMobile || \"\";\nconst ticketId = $(\"Criar Chamado GLPI\").item.json.id;\nif (!userId || !ticketId) return [$input.first()];\nconst token = $(\"Chamar Auth\").item.json.access_token;\nconst headers = { \"Authorization\": \"Bearer \" + token, \"Content-Type\": \"application/json\" };\n\n// 1) Adicionar requerente ao ticket\ntry {\n  await helpers.httpRequest({\n    method: \"POST\",\n    url: \"https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/\" + ticketId + \"/TeamMember\",\n    headers,\n    body: { type: \"User\", id: userId, role: \"requester\" }\n  });\n} catch(e) { /* ignora */ }\n\n// 2) Atualizar celular do usuario SO se ele estiver vazio\nconst celularTrigger = $(\"Trigger\").item.json.celular || $(\"Trigger\").item.json.telefone || \"\";\nif (celularTrigger && !userMobile) {\n  try {\n    await helpers.httpRequest({\n      method: \"PATCH\",\n      url: \"https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User/\" + userId,\n      headers,\n      body: { mobile: celularTrigger }\n    });\n  } catch(e) { /* ignora */ }\n}\n\nreturn [$input.first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        208
+      ],
+      "id": "05c1d757-ef59-49de-876c-def705088cde",
+      "name": "Pós-Criação"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO glpi_n8n.chamados_log\n  (conversa_id, glpi_ticket_id, glpi_ticket_url, titulo, menu_numero, menu_descricao,\n   solicitante_nome, glpi_category_id, prioridade, resposta_glpi, dados_solicitacao)\nVALUES (\n  $1, $2,\n  'https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id=' || $2::text,\n  $3, $4, $5,\n  $6, $7, 2, '{}'::jsonb,\n  $8::jsonb\n) ON CONFLICT DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Trigger').item.json.conversa_id || '',\n  $('Criar Chamado GLPI').item.json.id,\n  $('Montar Título').item.json.titulo,\n  6,\n  'CRIAÇÃO DE E-MAIL INSTITUCIONAL',\n  $('Trigger').item.json.nome_completo || '',\n  20,\n  JSON.stringify($('Trigger').item.json)\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1120,
+        208
+      ],
+      "id": "b37aaef0-b604-4180-9010-79b730981b9f",
+      "name": "Log no Banco",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "email-r1",
+              "name": "ticket_id",
+              "type": "number",
+              "value": "={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            },
+            {
+              "id": "email-r2",
+              "name": "ticket_url",
+              "type": "string",
+              "value": "=https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            },
+            {
+              "id": "email-r3",
+              "name": "sucesso",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "email-r4",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=✅ Chamado aberto! Número: *{{ $(\"Criar Chamado GLPI\").item.json.id }}*\n🔗 https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id={{ $(\"Criar Chamado GLPI\").item.json.id }}\n\n📧 Após aprovação, o e-mail {{ $('Trigger').item.json.nome_usuario }}@araraquara.sp.gov.br será criado automaticamente."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1424,
+        192
+      ],
+      "id": "8b663c4d-9bd3-44c1-bbb5-2b25b6a0c58e",
+      "name": "Retornar Resultado"
+    },
+    {
+      "position": [
+        596,
+        416
+      ],
+      "name": "Buscar Usuario ID",
+      "id": "buscar-usuario-95297",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst token = $(\"Chamar Auth\").item.json.access_token;\nconst d = $(\"Trigger\").item.json;\nconst email = d.email_pessoal || d.email_unidade || d.email_institucional || \"\";\nconst login = d.nome_usuario || d.login_usuario_reset || d.login_usuario_reativar || d.login_usuario_desativar || d.login_usuario_transferir || \"\";\nconst nome  = d.nome_completo || d.nome_solicitante || \"\";\n\nasync function searchUser(filter, requireUnique) {\n  try {\n    const r = await helpers.httpRequest({\n      method: \"GET\",\n      url: `https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User?filter=${encodeURIComponent(filter)}`,\n      headers: { \"Authorization\": \"Bearer \" + token }\n    });\n    const users = Array.isArray(r) ? r : (r?.data ? r.data : []);\n    if (users.length === 0) return null;\n    if (requireUnique && users.length > 1) return null;\n    return users[0];\n  } catch(e) { return null; }\n}\n\nlet user = null;\nif (email) user = await searchUser(`emails.email==${email}`, false);\nif (!user && login) user = await searchUser(`username==${login}`, false);\nif (!user && nome) {\n  const first = nome.trim().split(/\\s+/)[0];\n  if (first) user = await searchUser(`firstname==${first}`, true);\n}\n\nreturn [{ json: {\n  userId:     user?.id || 0,\n  userMobile: user?.mobile || \"\",\n  email, login, nome\n} }];"
+      },
+      "typeVersion": 2
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chamar Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Auth": {
+      "main": [
+        [
+          {
+            "node": "Montar HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar HTML": {
+      "main": [
+        [
+          {
+            "node": "Montar Título",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Título": {
+      "main": [
+        [
+          {
+            "node": "Buscar Usuario ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Chamado GLPI": {
+      "main": [
+        [
+          {
+            "node": "Pós-Criação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pós-Criação": {
+      "main": [
+        [
+          {
+            "node": "Log no Banco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log no Banco": {
+      "main": [
+        [
+          {
+            "node": "Retornar Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Usuario ID": {
+      "main": [
+        [
+          {
+            "node": "Criar Chamado GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "6805ddf5-9ba8-45a0-ae16-0ecc78c2ec67",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "3GWhOffkpHWYIz3G",
+  "tags": []
+}

@@ -1,0 +1,95 @@
+{
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "name": "23_GLPI_Inspecionar_Destination",
+  "tags": [],
+  "nodes": [
+    {
+      "position": [
+        220,
+        460
+      ],
+      "name": "Documentacao",
+      "id": "note-23-001",
+      "type": "n8n-nodes-base.stickyNote",
+      "parameters": {
+        "color": 4,
+        "content": "## WF 23 - Inspecionar Destinations dos 25 forms\n\nLista todos os destinations dos forms do MAPA e compara categoria_setada vs categoria_esperada.\n\nOutput:\n- Item 1: __resumo (total, ok, problemas)\n- Itens seguintes: 1 por destination com dest_id, form_name, categoria_setada, bate, etc.\n\nUsar para diagnosticar quando WF22 nao surtiu efeito ou quando ticket nasce sem categoria.",
+        "width": 520,
+        "height": 360
+      },
+      "typeVersion": 1
+    },
+    {
+      "position": [
+        240,
+        300
+      ],
+      "name": "Manual Trigger",
+      "id": "trg-23-001",
+      "type": "n8n-nodes-base.manualTrigger",
+      "parameters": {},
+      "typeVersion": 1
+    },
+    {
+      "id": "code-23-001",
+      "name": "Inspecionar Destinations",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst baseUrl = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\nconst I_FORM = 'Glpi%5CForm%5CForm';\nconst I_DEST = 'Glpi%5CForm%5CDestination%5CFormDestination';\n\nconst MAPA = {\n  'Criacao de Usuario': 15, 'Reset de Senha': 16, 'Reativacao de Usuario': 17,\n  'Desativacao de Usuario': 18, 'Acesso a Pasta de Rede': 19,\n  'Criacao de E-mail Institucional': 20, 'Transferencia de Setor ou Local': 22,\n  'Manutencao de Impressoras': 23, 'Manutencao de Computador': 24,\n  'Instalacao de Software': 25, 'Atualizacao de Software': 26,\n  'Reparacao de Software': 27, 'Internet Lenta ou Instavel': 28,\n  'Sem Conexao com a Internet': 29, 'Acesso Wi-Fi': 30,\n  'VPN / Acesso Remoto': 31, 'Outros Assuntos de Rede': 32, 'Cartucho ou Toner': 33,\n  'Saude - Problemas de Acesso': 34, 'Saude - Novo Acesso': 35, 'Saude - Solicitacoes Gerais': 36,\n  'Telefonia - Problemas com Ramal': 37, 'Telefonia - Aparelho Telefonico': 38,\n  'Telefonia - Celular e Chip': 39, 'Telefonia - Outros': 40\n};\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst r0 = await callRaw('GET', `${baseUrl}/initSession`, {\n  'App-Token': appToken, 'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { erro: 'auth falhou', detalhe: r0.body } }];\nconst H = { 'App-Token': appToken, 'Session-Token': r0.body.session_token };\n\nconst formsRes = await callRaw('GET', `${baseUrl}/${I_FORM}?range=0-200`, H);\nconst formsArr = Array.isArray(formsRes.body) ? formsRes.body : (formsRes.body.data || []);\nconst formIdToName = {};\nfor (const f of formsArr) {\n  if (f && f.is_deleted === 0 && MAPA[f.name] !== undefined) formIdToName[f.id] = f.name;\n}\n\nconst destsRes = await callRaw('GET', `${baseUrl}/${I_DEST}?range=0-500`, H);\nconst destsArr = Array.isArray(destsRes.body) ? destsRes.body : (destsRes.body.data || []);\n\nconst itens = [];\nfor (const d of destsArr) {\n  if (!d || !formIdToName[d.forms_forms_id]) continue;\n  const formName = formIdToName[d.forms_forms_id];\n  const esperada = MAPA[formName];\n  let cfg = null;\n  try { cfg = typeof d.config === 'string' ? JSON.parse(d.config) : d.config; } catch(_) {}\n  const catField = cfg ? cfg['glpi-form-destination-commonitilfield-itilcategoryfield'] : null;\n  const catSetada = catField ? catField.specific_itilcategories_id : null;\n  const strategy = catField ? catField.strategy : null;\n  itens.push({\n    form_name: formName, form_id: d.forms_forms_id,\n    dest_id: d.id, dest_name: d.name,\n    categoria_esperada: esperada,\n    categoria_setada: catSetada,\n    bate: (catSetada === esperada),\n    strategy_categoria: strategy,\n    chaves_do_config: cfg ? Object.keys(cfg) : [],\n    itilcategoryfield: catField\n  });\n}\n\nawait callRaw('GET', `${baseUrl}/killSession`, H);\n\nconst oks = itens.filter(o => o.bate).length;\nconst erros = itens.filter(o => !o.bate);\nconst resumo = {\n  __resumo: true,\n  total_destinations: itens.length,\n  com_categoria_ok: oks,\n  com_problema: erros.length,\n  problemas: erros.map(o => `${o.form_name} (dest_id ${o.dest_id}): esperado=${o.categoria_esperada} setado=${o.categoria_setada} strategy=${o.strategy_categoria}`)\n};\n\nreturn [{ json: resumo }, ...itens.map(o => ({ json: o }))];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        480
+      ],
+      "id": "afe6a533-1350-4e5f-8323-f46acae4b256",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Carregar Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          {
+            "node": "Inspecionar Destinations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}

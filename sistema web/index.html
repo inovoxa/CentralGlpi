@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central de Operações GLPI · Prefeitura de Araraquara</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont/tabler-icons.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --p:#00D9C0; --s:#5B7FDE; --a:#E85D9A;
+  --dk:#0A0E27; --dkr:#050711; --lt:#F8F9FA;
+  --mut:rgba(248,249,250,.6); --brd:rgba(255,255,255,.09);
+  --g1:linear-gradient(135deg,#00D9C0 0%,#5B7FDE 100%);
+  --g2:linear-gradient(135deg,#E85D9A 0%,#FF9A6C 100%);
+  --glass:rgba(255,255,255,.04);
+  --ok:#3ddc97; --warn:#FFB454; --err:#ff6b81; --info:#5B7FDE;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Outfit',system-ui,sans-serif;background:var(--dkr);color:var(--lt);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.mono{font-family:'JetBrains Mono',monospace}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:14px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:10px}
+::-webkit-scrollbar-track{background:transparent}
+.hidden{display:none!important}
+.gradtext{background:var(--g1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
+
+/* blobs */
+.blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.35;z-index:0;pointer-events:none;animation:float 18s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,-30px) scale(1.1)}66%{transform:translate(-30px,20px) scale(.95)}}
+
+/* ===== LOGIN ===== */
+#login{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,rgba(5,7,17,.85),rgba(10,14,39,.7)),url('Background_GLPI.jpeg') center/cover no-repeat;}
+.login-card{width:400px;max-width:92vw;background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--brd);border-radius:20px;padding:38px 34px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.login-card .brasao{display:block;height:64px;margin:0 auto 14px}
+.login-card h1{text-align:center;font-size:26px;font-weight:800;letter-spacing:-.5px}
+.login-card .sub{text-align:center;color:var(--mut);font-size:13px;margin-bottom:24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--mut);margin-bottom:6px;font-weight:500}
+.inp{width:100%;background:rgba(255,255,255,.05);border:1px solid var(--brd);border-radius:10px;padding:11px 13px;color:var(--lt);transition:.3s}
+.inp:focus{outline:none;border-color:var(--p);box-shadow:0 0 0 3px rgba(0,217,192,.12)}
+.pwwrap{position:relative}
+.pwwrap .toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--mut);font-size:18px}
+.row-between{display:flex;align-items:center;justify-content:space-between}
+.check{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;padding:11px 16px;font-weight:600;transition:.3s}
+.btn:hover{transform:translateY(-2px)}
+.btn-grad{background:var(--g1);color:#04121a;width:100%;font-weight:700;box-shadow:0 8px 24px rgba(0,217,192,.18)}
+.btn-ghost{background:rgba(255,255,255,.05);border:1px solid var(--brd);width:100%}
+.btn-sm{padding:7px 12px;font-size:13px;border-radius:9px}
+.divider{display:flex;align-items:center;gap:10px;color:var(--mut);font-size:11px;margin:16px 0}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--brd)}
+.linkmut{color:var(--mut);font-size:12px;text-align:center;display:block;margin-top:14px}
+.linkmut:hover{color:var(--p)}
+.login-foot{text-align:center;color:var(--mut);font-size:11px;margin-top:18px}
+
+/* ===== APP SHELL ===== */
+#app{display:none;min-height:100vh;flex-direction:column}
+header.top{position:sticky;top:0;z-index:50;height:60px;display:flex;align-items:center;gap:16px;padding:0 18px;background:rgba(10,14,39,.7);backdrop-filter:blur(20px);border-bottom:1px solid var(--brd)}
+header.top .brasao{height:40px}
+.brand{font-weight:700;font-size:15px;white-space:nowrap}
+.brand small{display:block;font-weight:400;font-size:11px;color:var(--mut)}
+.live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);margin-left:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(61,220,151,.6);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,220,151,.5)}70%{box-shadow:0 0 0 9px rgba(61,220,151,0)}100%{box-shadow:0 0 0 0 rgba(61,220,151,0)}}
+.spacer{flex:1}
+.iconbtn{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:20px;position:relative;transition:.3s}
+.iconbtn:hover{background:rgba(255,255,255,.06);color:var(--lt)}
+.nbadge{position:absolute;top:5px;right:5px;background:var(--a);color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;min-width:15px;text-align:center}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--g1);color:#04121a;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;cursor:pointer}
+.viewas-banner{background:rgba(232,93,154,.14);border-bottom:1px solid rgba(232,93,154,.3);color:#ffd0e4;font-size:12px;padding:6px 18px;display:flex;align-items:center;gap:8px}
+.shell{flex:1;display:flex;min-height:0}
+aside.side{width:248px;flex-shrink:0;background:rgba(10,14,39,.45);border-right:1px solid var(--brd);padding:14px 10px;overflow-y:auto;transition:.3s}
+aside.side.collapsed{width:64px}
+.side .grp{font-size:10px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;margin:14px 10px 6px;font-weight:600}
+.navi{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;color:var(--mut);font-size:13.5px;font-weight:500;cursor:pointer;transition:.2s;white-space:nowrap}
+.navi i{font-size:19px;flex-shrink:0}
+.navi:hover{background:rgba(255,255,255,.05);color:var(--lt)}
+.navi.active{background:rgba(0,217,192,.12);color:var(--p)}
+.navi.active i{color:var(--p)}
+.side.collapsed .navi span,.side.collapsed .grp{display:none}
+main.content{flex:1;overflow-y:auto;padding:22px 26px;min-width:0;display:flex;flex-direction:column}
+.view{flex:1}
+footer.foot{margin-top:26px;padding:14px 0 4px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center;color:var(--mut);font-size:12px;flex-wrap:wrap;gap:8px}
+
+/* ===== COMPONENTS ===== */
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.page-head h2{font-size:23px;font-weight:700;letter-spacing:-.4px}
+.page-head p{color:var(--mut);font-size:13px;margin-top:2px}
+.card{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--brd);border-radius:16px;padding:18px}
+.card.sm{border-radius:12px;padding:15px}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr}.g2{grid-template-columns:1fr}}
+.metric{position:relative;overflow:hidden}
+.metric .ic{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:12px}
+.metric .v{font-size:30px;font-weight:800;letter-spacing:-1px}
+.metric .l{color:var(--mut);font-size:12.5px;margin-top:2px}
+.metric .trend{font-size:11px;margin-top:8px;display:inline-flex;gap:4px;align-items:center}
+.up{color:var(--ok)} .down{color:var(--err)}
+.hero{position:relative;border-radius:20px;overflow:hidden;padding:30px;border:1px solid var(--brd);margin-bottom:20px;
+  background:linear-gradient(135deg,rgba(5,7,17,.82),rgba(10,14,39,.6)),url('Background_GLPI.jpeg') center/cover}
+.hero h1{font-size:26px;font-weight:800}
+.hero p{color:rgba(248,249,250,.8);margin-top:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.07);border:1px solid var(--brd);color:var(--mut)}
+.chip.active{background:rgba(0,217,192,.14);border-color:rgba(0,217,192,.3);color:var(--p)}
+.seg{display:inline-flex;background:rgba(255,255,255,.05);border:1px solid var(--brd);border-radius:10px;padding:3px}
+.seg button{padding:6px 13px;border-radius:8px;font-size:12.5px;color:var(--mut);font-weight:500}
+.seg button.on{background:var(--g1);color:#04121a;font-weight:700}
+.badge{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.b-teal{background:rgba(0,217,192,.14);color:var(--p)}
+.b-blue{background:rgba(91,127,222,.16);color:#9db4ff}
+.b-pink{background:rgba(232,93,154,.16);color:#ff9ec5}
+.b-amber{background:rgba(255,180,84,.16);color:var(--warn)}
+.b-red{background:rgba(255,107,129,.16);color:var(--err)}
+.b-grey{background:rgba(255,255,255,.08);color:var(--mut)}
+.b-green{background:rgba(61,220,151,.16);color:var(--ok)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--brd)}
+td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;vertical-align:middle}
+tbody tr{transition:.2s}
+tbody tr:hover{background:rgba(255,255,255,.03)}
+.tbl-wrap{overflow-x:auto;border-radius:12px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--brd);border-radius:10px;padding:8px 12px;flex:1;min-width:200px}
+.search input{background:none;border:none;color:var(--lt);outline:none;width:100%}
+.search i{color:var(--mut)}
+select.inp{appearance:none;cursor:pointer}
+.linklike{color:var(--p);cursor:pointer;font-weight:600}
+.linklike:hover{text-decoration:underline}
+.actions-cell{display:flex;gap:4px}
+.actions-cell .iconbtn{width:30px;height:30px;font-size:17px;border-radius:8px}
+
+/* kanban */
+.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:13px;align-items:start}
+@media(max-width:1300px){.kanban{grid-template-columns:repeat(2,1fr)}}
+.kcol{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:14px;padding:11px;min-height:120px}
+.kcol.drag{border-color:var(--p);background:rgba(0,217,192,.06)}
+.kcol h4{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);display:flex;justify-content:space-between;margin-bottom:10px;padding:0 3px}
+.kcard{background:var(--glass);border:1px solid var(--brd);border-radius:11px;padding:11px;margin-bottom:9px;cursor:grab;position:relative;overflow:hidden;transition:.2s}
+.kcard:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.3)}
+.kcard .slabar{position:absolute;left:0;top:0;bottom:0;width:3px}
+.kcard .kid{font-size:11px;color:var(--mut)}
+.kcard .kt{font-weight:600;font-size:13px;margin:3px 0 7px}
+.kcard .kmeta{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--mut)}
+
+/* chat */
+.chatwrap{display:grid;grid-template-columns:35% 65%;gap:0;height:calc(100vh - 220px);min-height:480px;border:1px solid var(--brd);border-radius:16px;overflow:hidden}
+.convlist{border-right:1px solid var(--brd);display:flex;flex-direction:column;background:rgba(255,255,255,.02)}
+.convlist .lh{padding:12px;border-bottom:1px solid var(--brd)}
+.convlist .scroller{overflow-y:auto;flex:1}
+.convitem{display:flex;gap:10px;padding:12px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;border-left:3px solid transparent;transition:.2s}
+.convitem:hover{background:rgba(255,255,255,.03)}
+.convitem.sel{border-left-color:var(--p);background:rgba(0,217,192,.06)}
+.cav{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#04121a}
+.convitem .cmain{flex:1;min-width:0}
+.convitem .crow{display:flex;justify-content:space-between;gap:6px}
+.convitem .cname{font-weight:600;font-size:13.5px}
+.convitem .ctime{font-size:11px;color:var(--mut);white-space:nowrap}
+.convitem .csec{font-size:11px;color:var(--mut)}
+.convitem .cprev{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.convitem .ctags{display:flex;gap:5px;margin-top:5px;align-items:center}
+.thread{display:flex;flex-direction:column;min-width:0}
+.thread .th{padding:13px 16px;border-bottom:1px solid var(--brd);display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.thread .msgs{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:11px;
+  background:radial-gradient(circle at 30% 10%,rgba(91,127,222,.05),transparent 60%)}
+.bubble{max-width:74%;padding:9px 13px;border-radius:14px;font-size:13.5px;position:relative}
+.bubble .bt{font-size:9.5px;color:var(--mut);margin-top:5px;text-align:right}
+.bubble .who{font-size:10.5px;font-weight:700;margin-bottom:3px;display:flex;align-items:center;gap:5px}
+.b-user{align-self:flex-end;background:rgba(0,217,192,.12);border:1px solid rgba(0,217,192,.25)}
+.b-ai{align-self:flex-start;background:linear-gradient(135deg,rgba(0,217,192,.18),rgba(91,127,222,.18));border:1px solid rgba(91,127,222,.22)}
+.b-ai .who{color:var(--p)}
+.b-tec{align-self:flex-start;background:rgba(232,93,154,.12);border:1px solid rgba(232,93,154,.25)}
+.b-tec .who{color:#ff9ec5}
+.sysmsg{align-self:center;font-size:11.5px;padding:5px 13px;border-radius:20px;font-weight:600;text-align:center;max-width:85%}
+.audio{display:flex;align-items:center;gap:9px}
+.wave{display:flex;align-items:center;gap:2px;height:22px}
+.wave i{width:2.5px;background:currentColor;border-radius:2px;opacity:.7}
+.playbtn{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.transcript{font-size:11.5px;color:var(--mut);font-style:italic;margin-top:5px}
+.composer{padding:11px 14px;border-top:1px solid var(--brd);display:flex;gap:9px;align-items:center}
+.composer input{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--brd);border-radius:22px;padding:10px 15px;color:var(--lt);outline:none}
+
+/* timeline */
+.tl{position:relative;padding-left:26px}
+.tl::before{content:"";position:absolute;left:8px;top:4px;bottom:4px;width:2px;background:var(--brd)}
+.tlitem{position:relative;padding:0 0 18px}
+.tlitem .tdot{position:absolute;left:-26px;top:1px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#04121a}
+.tlitem .tx{font-size:13.5px}
+.tlitem .tm{font-size:11px;color:var(--mut);margin-top:2px}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(2,4,12,.7);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{width:520px;max-width:94vw;max-height:90vh;overflow-y:auto;background:#0b1026;border:1px solid var(--brd);border-radius:18px;padding:24px;box-shadow:0 40px 100px rgba(0,0,0,.6)}
+.modal.wide{width:720px}
+.modal .mh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
+.modal h3{font-size:19px;font-weight:700}
+.modal .msub{color:var(--mut);font-size:12.5px}
+.side-modal{position:fixed;top:0;right:0;bottom:0;width:480px;max-width:96vw;background:#0b1026;border-left:1px solid var(--brd);z-index:200;overflow-y:auto;padding:22px;box-shadow:-30px 0 80px rgba(0,0,0,.5);animation:slidein .3s ease}
+@keyframes slidein{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px}
+.kv .k{color:var(--mut)}
+.btnrow{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}
+.btn-line{border:1px solid var(--brd);background:rgba(255,255,255,.04)}
+.btn-pink{background:var(--g2);color:#2a0a18;font-weight:700}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--brd);margin-bottom:16px;flex-wrap:wrap}
+.tabs button{padding:9px 14px;color:var(--mut);font-weight:500;font-size:13px;border-bottom:2px solid transparent}
+.tabs button.on{color:var(--p);border-bottom-color:var(--p)}
+.permgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.permrow{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(255,255,255,.03);border-radius:9px;font-size:12.5px}
+.sw{position:relative;width:34px;height:19px;background:rgba(255,255,255,.15);border-radius:20px;flex-shrink:0;cursor:pointer;transition:.3s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.3s}
+.sw.on{background:var(--p)}.sw.on::after{left:17px}
+.toast-wrap{position:fixed;bottom:22px;right:22px;z-index:300;display:flex;flex-direction:column;gap:10px}
+.toast{background:#0b1026;border:1px solid var(--brd);border-left:3px solid var(--p);border-radius:11px;padding:12px 15px;min-width:240px;font-size:13px;display:flex;gap:10px;align-items:center;box-shadow:0 14px 40px rgba(0,0,0,.5);animation:slidein .25s ease}
+.toast i{font-size:19px;color:var(--p)}
+.empty{text-align:center;color:var(--mut);padding:50px 20px}
+.empty i{font-size:42px;opacity:.5;display:block;margin-bottom:10px}
+.pwbar{height:6px;border-radius:6px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
+.pwbar i{display:block;height:100%;transition:.3s}
+.miniwrap{height:42px}
+.statbig{font-size:34px;font-weight:800;letter-spacing:-1px}
+.flex{display:flex} .ic-gap{gap:10px} .center{align-items:center} .wrap{flex-wrap:wrap}
+.mt8{margin-top:8px}.mt16{margin-top:16px}.mb12{margin-bottom:12px}
+.muted{color:var(--mut)}
+.barh{height:8px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden}
+.barh i{display:block;height:100%;background:var(--g1)}
+</style>
+</head>
+<body>
+<div class="blob" style="width:380px;height:380px;background:var(--p);top:-100px;left:-80px"></div>
+<div class="blob" style="width:340px;height:340px;background:var(--a);bottom:-120px;right:-60px;animation-delay:-6s"></div>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="login">
+  <div class="login-card">
+    <img class="brasao" src="BrasaoAraraquara.png" alt="Brasão de Araraquara">
+    <h1>Central GLPI</h1>
+    <div class="sub">Prefeitura Municipal de Araraquara</div>
+    <div class="field">
+      <label>E-mail institucional</label>
+      <input id="lgEmail" class="inp" type="email" placeholder="usuario@araraquara.sp.gov.br" value="fabricio@araraquara.sp.gov.br">
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <div class="pwwrap">
+        <input id="lgPass" class="inp" type="password" placeholder="••••••••" value="demo">
+        <i class="ti ti-eye toggle" onclick="togglePw('lgPass',this)"></i>
+      </div>
+    </div>
+    <div class="row-between" style="margin:4px 0 16px">
+      <label class="check"><input type="checkbox" checked> Manter conectado</label>
+      <a class="linkmut" style="margin:0" onclick="openForgot()">Esqueci minha senha</a>
+    </div>
+    <button class="btn btn-grad" onclick="doLogin()"><i class="ti ti-login-2"></i> Entrar</button>
+    <div class="divider">ou</div>
+    <button class="btn btn-ghost" onclick="doLogin(true)"><i class="ti ti-windows"></i> Entrar com Active Directory</button>
+    <div id="lgErr" class="hidden" style="color:var(--err);font-size:12px;text-align:center;margin-top:12px"></div>
+    <div class="login-foot">desenvolvido por<br><img src="https://essdtsmqcwonprcoxxdz.supabase.co/storage/v1/object/public/inovoxa/Sem%20nome%20(999%20x%20296%20px).png" alt="Inovoxa" style="height:26px;margin-top:6px;opacity:.95"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <header class="top">
+    <img class="brasao" src="BrasaoAraraquara.png" alt="Brasão">
+    <div class="brand">Central GLPI<small>Prefeitura Municipal de Araraquara</small></div>
+    <button class="iconbtn" onclick="toggleSide()" title="Menu"><i class="ti ti-layout-sidebar-left-collapse"></i></button>
+    <div class="live"><span class="dot"></span> ao vivo · <span id="clock" class="mono"></span></div>
+    <div class="spacer"></div>
+    <div style="position:relative">
+      <button class="iconbtn" onclick="toggleNotif()"><i class="ti ti-bell"></i><span class="nbadge" id="notifCount">5</span></button>
+      <div id="notifMenu" class="hidden" style="position:absolute;right:0;top:46px;width:320px;background:#0b1026;border:1px solid var(--brd);border-radius:14px;padding:8px;z-index:60;box-shadow:0 20px 60px rgba(0,0,0,.5)"></div>
+    </div>
+    <div style="position:relative">
+      <div class="avatar" id="avatar" onclick="toggleAvatar()">FM</div>
+      <div id="avatarMenu" class="hidden" style="position:absolute;right:0;top:48px;width:260px;background:#0b1026;border:1px solid var(--brd);border-radius:14px;padding:8px;z-index:60;box-shadow:0 20px 60px rgba(0,0,0,.5)"></div>
+    </div>
+  </header>
+  <div id="viewasBanner" class="viewas-banner hidden"></div>
+  <div class="shell">
+    <aside class="side" id="side"></aside>
+    <main class="content">
+      <div id="view" class="view"></div>
+      <footer class="foot">
+        <span>© 2026 Prefeitura Municipal de Araraquara · Central GLPI v2.0</span>
+        <a href="https://inovoxa.com.br" target="_blank">Powered by <span class="gradtext">Inovoxa</span> <i class="ti ti-external-link" style="font-size:12px"></i></a>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+const INOVOXA_LOGO="https://essdtsmqcwonprcoxxdz.supabase.co/storage/v1/object/public/inovoxa/Sem%20nome%20(999%20x%20296%20px).png";
+const NOW=new Date(2026,5,1,9,41); // 1 jun 2026 09:41
+
+/* ===================== PERMISSIONS ===================== */
+const PERMS=[
+ {g:'Operação',items:[['view_all','Ver todos os chamados'],['view_sector','Ver chamados do setor'],['move_kanban','Mover cards no Kanban'],['assume','Assumir conversas'],['send_msg','Responder no chat'],['update_status','Atualizar status']]},
+ {g:'Aprovação & Execução',items:[['approve','Aprovar chamados'],['execute_ad','Executar no AD/Exchange'],['edit_sla','Editar SLAs']]},
+ {g:'Gestão',items:[['manage_users','Cadastrar usuários do sistema'],['manage_profiles','Gerenciar perfis'],['manage_sectors','Gerenciar setores'],['config','Configurações do sistema']]},
+ {g:'Auditoria',items:[['view_audit','Ver auditoria'],['export','Exportar relatórios/logs']]}
+];
+const ALLPERMS=PERMS.flatMap(x=>x.items.map(i=>i[0]));
+const PROFILES={
+ admin:{name:'Admin',desc:'Acesso total ao sistema, incluindo cadastros e configuração',color:'var(--p)',perms:[...ALLPERMS]},
+ coord:{name:'Coordenador TI',desc:'Aprova, executa, edita SLAs e vê auditoria',color:'var(--s)',perms:['view_all','move_kanban','assume','send_msg','update_status','approve','execute_ad','edit_sla','view_audit','export','manage_users','manage_sectors']},
+ tecnico:{name:'Técnico',desc:'Atende chamados atribuídos e a fila geral',color:'var(--a)',perms:['view_all','move_kanban','assume','send_msg','update_status']},
+ gestor:{name:'Gestor de Setor',desc:'Aprova chamados do próprio setor, sem ações técnicas',color:'var(--warn)',perms:['view_sector','approve']},
+ auditor:{name:'Auditor',desc:'Somente leitura — consulta e exporta logs',color:'#9db4ff',perms:['view_all','view_audit','export']}
+};
+function can(p){const pr=effectiveProfile();return PROFILES[pr]?.perms.includes(p)}
+function effectiveProfile(){return STATE.viewAs||STATE.currentUser?.profile}
+
+/* ===================== STATE / MOCK ===================== */
+const SECTORS=[
+ {nome:'Tecnologia da Informação',sigla:'TI',ou:'OU=TI',resp:'Fabrício Muaca',cat:'Suporte de Informática'},
+ {nome:'Saúde',sigla:'SAU',ou:'OU=Saude',resp:'Mariana Pereira',cat:'Sistemas da Saúde'},
+ {nome:'Educação',sigla:'EDU',ou:'OU=Educacao',resp:'Carlos Nunes',cat:'Suporte de Informática'},
+ {nome:'Financeiro',sigla:'FIN',ou:'OU=Financeiro',resp:'Beatriz Rocha',cat:'Suporte de Informática'},
+ {nome:'Recursos Humanos',sigla:'RH',ou:'OU=RH',resp:'Tânia Marques',cat:'Usuários e Acessos'},
+ {nome:'Jurídico',sigla:'JUR',ou:'OU=Juridico',resp:'José Roberto',cat:'Suporte de Informática'},
+ {nome:'Obras',sigla:'OBR',ou:'OU=Obras',resp:'Pedro Oliveira',cat:'Suporte de Informática'},
+ {nome:'Administração',sigla:'ADM',ou:'OU=Administracao',resp:'Carla Santos',cat:'Usuários e Acessos'}
+];
+const USERS=[
+ {id:1,nome:'Fabrício Muaca',email:'fabricio@araraquara.sp.gov.br',profile:'admin',sector:'TI',status:'ativo',last:'01/06/2026 09:38',primeiro_acesso:false,tel:'(16) 99999-0001'},
+ {id:2,nome:'Administrador',email:'admin@araraquara.sp.gov.br',profile:'admin',sector:'TI',status:'ativo',last:'31/05/2026 18:02',primeiro_acesso:false,tel:'(16) 99999-0002'},
+ {id:3,nome:'Lucas Teixeira',email:'coordenador@araraquara.sp.gov.br',profile:'coord',sector:'TI',status:'ativo',last:'01/06/2026 08:55',primeiro_acesso:false,tel:'(16) 99999-0003'},
+ {id:4,nome:'Rafael Lima',email:'tecnico@araraquara.sp.gov.br',profile:'tecnico',sector:'TI',status:'ativo',last:'01/06/2026 09:20',primeiro_acesso:true,tel:'(16) 99999-0004'},
+ {id:5,nome:'Mariana Pereira',email:'gestor.saude@araraquara.sp.gov.br',profile:'gestor',sector:'Saúde',status:'ativo',last:'30/05/2026 16:41',primeiro_acesso:false,tel:'(16) 99999-0005'},
+ {id:6,nome:'Sandra Auditoria',email:'auditor@araraquara.sp.gov.br',profile:'auditor',sector:'Administração',status:'ativo',last:'29/05/2026 11:10',primeiro_acesso:false,tel:'(16) 99999-0006'}
+];
+const CATS=['Criação de usuário','Reset de senha','Reativação de usuário','Desativação de usuário','Acesso à pasta de rede','Transferência de setor','Criação de e-mail','Suporte de Informática','Sistemas da Saúde','Telefonia'];
+const CHANNELS=['WhatsApp','Formulário','RH-auto','Manual'];
+const STATUSES=['aberto','aguardando_aprovacao','em_execucao','resolvido','violou_sla'];
+const STLABEL={aberto:'Aberto',aguardando_aprovacao:'Aguardando aprovação',em_execucao:'Em execução',resolvido:'Resolvido',violou_sla:'Violou SLA'};
+const STBADGE={aberto:'b-blue',aguardando_aprovacao:'b-amber',em_execucao:'b-teal',resolvido:'b-green',violou_sla:'b-red'};
+const CHICON={WhatsApp:'ti-brand-whatsapp',Formulário:'ti-forms','RH-auto':'ti-database-cog',Manual:'ti-hand-finger'};
+const NAMES=['João Carlos Lima','Roberto Souza','Ana Paula Dias','Lucas Farias','Tânia Marques','José Roberto','Pedro Oliveira','Carla Santos','Fernanda Lima','Marcos Pereira','Ricardo Almeida','Juliana Costa','Bruno Teixeira','Patrícia Gomes','Eduardo Ramos','Vanessa Cruz','Felipe Andrade','Camila Rocha'];
+function rnd(a){return a[Math.floor(Math.random()*a.length)]}
+function pad(n){return String(n).padStart(2,'0')}
+function fmtDate(d){return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes())}
+function relTime(d){const m=Math.round((NOW-d)/60000);if(m<1)return'agora';if(m<60)return m+' min';const h=Math.round(m/60);if(h<24)return h+'h';const dd=Math.round(h/24);if(dd<7)return dd+'d';return pad(d.getDate())+'/'+pad(d.getMonth()+1)}
+
+const STATE={currentUser:null,viewAs:null,loginAttempts:0,users:USERS,sectors:SECTORS,
+ tickets:[],conversations:[],events:[],accessLogs:[],operationLogs:[],liveTimer:null,paused:false};
+
+// tickets
+(function(){const sl=['#f',2]; for(let i=0;i<54;i++){
+  const d=new Date(NOW-Math.floor(Math.random()*86400000*18));
+  const st=rnd(STATUSES); const sec=rnd(SECTORS);
+  STATE.tickets.push({id:4560-i,sol:rnd(NAMES),sector:sec.nome,sigla:sec.sigla,cat:rnd(CATS),
+   canal:rnd(CHANNELS),status:st,sla:Math.floor(Math.random()*100),assignee:Math.random()>.4?rnd(['Lucas Teixeira','Rafael Lima','—']):'—',
+   prio:rnd(['Baixa','Média','Alta','Crítica']),aberto:d});
+}})();
+// conversations (12, full)
+function mkc(id,nome,sector,sigla,canal,rel,ticket,humano,audio,msgs){return{id,nome,sector,sigla,canal,rel,ticket,humano,audio,msgs}}
+const M=(from,text,time,extra={})=>({from,text,time,...extra});
+STATE.conversations=[
+ mkc(1,'Maria Cristina','Coord. Saúde','SAU','WhatsApp','4 min',4521,false,false,[
+  M('user','Oi','09:32'),
+  M('ai','Olá Maria! Sou o assistente virtual da LGTI. Posso ajudar com:\n1️⃣ Usuários e Acessos\n2️⃣ Suporte de Informática\n3️⃣ Sistemas da Saúde\n4️⃣ Telefonia','09:32'),
+  M('user','1','09:33'),
+  M('ai','Para Usuários e Acessos, escolha a operação:\n1.1 Criação de usuário\n1.2 Reset de senha\n1.3 Reativação\n1.4 Desativação\n1.5 Acesso à pasta de rede\n1.6 Transferência de setor\n1.7 Criação de e-mail institucional','09:33'),
+  M('user','1.1','09:33'),
+  M('ai','Para criar um novo usuário, preciso de:\n• Nome completo\n• CPF\n• Matrícula\n• Cargo/CBO\n• Setor\n• E-mail do superior\n• Perfil de referência\nVamos começar pelo nome completo?','09:34'),
+  M('user','João Carlos de Souza Lima','09:34'),
+  M('user','CPF 312.456.789-01','09:35'),
+  M('user','Matrícula 78421','09:35'),
+  M('user','Auxiliar Administrativo','09:35'),
+  M('user','Coordenadoria de Saúde','09:36'),
+  M('user','superior: mpereira@araraquara.sp.gov.br','09:36'),
+  M('user','perfil: MPereira mesmo','09:36'),
+  M('ai','Confira os dados:\nNome: João Carlos de Souza Lima\nCPF: 312.456.789-01\nMatrícula: 78421\nLogin gerado: JCSLima\nCargo: Auxiliar Administrativo\nSetor: Coord. Saúde\nPerfil referência: MPereira\nConfirma?','09:37'),
+  M('user','Sim','09:37'),
+  M('sys','✓ Chamado #4521 aberto no GLPI','09:38','teal'),
+  M('ai','✅ Chamado #4521 aberto. Aguardando aprovação do superior. Você receberá o resultado aqui.','09:38'),
+  M('sys','✓ Chamado #4521 aprovado por mpereira@araraquara.sp.gov.br','09:42','blue'),
+  M('sys','⚡ Usuário JCSLima criado no Active Directory','09:42','grad'),
+  M('sys','⚡ Grupos e OU replicados de MPereira','09:42','grad'),
+  M('ai','✅ Usuário criado com sucesso!\nLogin: JCSLima\nSenha provisória: [enviada por e-mail para mpereira@]\nDomínio: pma.local\nA senha deve ser alterada no primeiro acesso.','09:42')
+ ]),
+ mkc(2,'Roberto Souza','TI','TI','WhatsApp','22 min',4519,false,false,[
+  M('user','preciso resetar minha senha','09:14'),
+  M('ai','Claro, Roberto! Para reset de senha (1.2), confirme seu login de rede:','09:14'),
+  M('user','rsouza','09:15'),
+  M('ai','Confirmado: rsouza (TI). Posso gerar uma senha provisória agora?','09:15'),
+  M('user','sim por favor','09:15'),
+  M('sys','✓ Chamado #4519 aberto','09:15','teal'),
+  M('sys','⚡ Senha de rsouza redefinida no AD','09:16','grad'),
+  M('ai','✅ Senha provisória gerada e enviada ao seu e-mail. Troque no primeiro acesso.','09:16')
+ ]),
+ mkc(3,'Ana Paula Dias','Financeiro','FIN','WhatsApp','1h',4510,false,false,[
+  M('user','qual o status do meu chamado 4510?','08:30'),
+  M('ai','O chamado #4510 (Acesso à pasta de rede) está *Em execução*. SLA dentro do prazo (restam 3h12). Assim que concluir, te aviso aqui.','08:30'),
+  M('user','obrigada','08:31'),
+  M('ai','Disponha! 😊','08:31')
+ ]),
+ mkc(4,'Lucas Farias','Educação','EDU','WhatsApp','2h',4505,true,false,[
+  M('user','preciso de acesso a uma pasta que não é padrão do meu setor','07:50'),
+  M('ai','Entendi, Lucas. Acesso a pasta fora do padrão exige análise. Vou registrar e encaminhar a um técnico. Qual o caminho da pasta?','07:51'),
+  M('user','\\\\srv01\\financeiro\\contratos','07:51'),
+  M('sys','✓ Chamado #4505 aberto — requer análise manual','07:52','teal'),
+  M('sys','👤 Lucas Teixeira (TI) assumiu a conversa','07:55','pink'),
+  M('tec','Oi Lucas, aqui é o Lucas da TI. Esse acesso precisa de aprovação do gestor do Financeiro porque é uma pasta de outro setor. Você tem autorização formal?','07:56','Lucas Teixeira'),
+  M('user','tenho sim, o chefe pediu por e-mail','07:57'),
+  M('tec','Perfeito, me encaminha esse e-mail que eu anexo no chamado e sigo com a liberação.','07:58','Lucas Teixeira')
+ ]),
+ mkc(5,'Tânia Marques','RH','RH','WhatsApp','3h',4502,false,true,[
+  M('user','bom dia, preciso criar um usuário novo','06:48'),
+  M('ai','Bom dia, Tânia! Vamos criar um usuário (1.1). Pode me mandar os dados do colaborador? Pode ser por áudio se preferir.','06:49'),
+  M('user','',  '06:50',{audio:{dur:'0:24',transcript:'É a Helena Martins, CPF 408 555 222 10, matrícula 91022, vai ser assistente de RH, perfil igual ao da Júlia'}}),
+  M('ai','Anotado:\nNome: Helena Martins\nCPF: 408.555.222-10\nMatrícula: 91022\nCargo: Assistente de RH\nPerfil: JFerreira (Júlia)\nLogin gerado: HMartins\nConfirma?','06:51'),
+  M('user','isso','06:51'),
+  M('sys','✓ Chamado #4502 aberto','06:52','teal'),
+  M('sys','⚡ Usuário HMartins criado no AD','06:58','grad'),
+  M('ai','✅ HMartins criado e grupos replicados de JFerreira. Senha enviada ao superior.','06:58')
+ ]),
+ mkc(6,'José Roberto','Jurídico','JUR','WhatsApp','5h',4498,true,false,[
+  M('user','voltei de licença, meu acesso foi desativado','04:40'),
+  M('ai','Bem-vindo de volta! Para reativação (1.3), confirme seu login:','04:41'),
+  M('user','jroberto','04:41'),
+  M('ai','Encontrei a conta jroberto (Jurídico), desativada em 02/04. Confirma a reativação?','04:42'),
+  M('user','sim','04:42'),
+  M('sys','✓ Chamado #4498 aberto','04:42','teal'),
+  M('sys','✓ Aprovado pelo gestor do Jurídico','04:50','blue'),
+  M('sys','⚡ Conta jroberto reativada e movida para OU=Juridico','04:51','grad'),
+  M('ai','✅ Conta reativada! Nova senha provisória enviada ao seu superior.','04:51'),
+  M('sys','👤 Rafael Lima (TI) acompanhou o atendimento','04:52','pink'),
+  M('tec','Oi José, confirmei aqui que sua conta voltou ao normal e seus grupos do Jurídico foram restaurados. Qualquer coisa, me chama.','04:53','Rafael Lima')
+ ]),
+ mkc(7,'Sistema SMARAPD (RH)','Automático','RH','RH-auto','6h',4495,false,false,[
+  M('sys','🔄 Sincronização SMARAPD — desligamento detectado','03:30','amber'),
+  M('ai','Evento automático: matrícula 60112 (Paulo Henrique, Obras) marcada como DESLIGADA no SMARrh em 01/06.','03:30'),
+  M('sys','✓ Chamado #4495 aberto automaticamente (Desativação)','03:31','teal'),
+  M('sys','✓ Aprovação automática (regra de desligamento RH)','03:31','blue'),
+  M('sys','🔒 Conta phenrique desativada — movida para OU Desativados','03:32','amber'),
+  M('sys','🔒 Grupos removidos e e-mail bloqueado no Exchange','03:32','amber'),
+  M('ai','✅ Desligamento processado sem intervenção humana. Conta phenrique desativada.','03:32')
+ ]),
+ mkc(8,'Pedro Oliveira','Obras','OBR','WhatsApp','8h',null,false,false,[
+  M('user','preciso de um pedreiro pra obra da escola','01:30'),
+  M('ai','Oi Pedro! Aqui é o suporte de *TI* da Prefeitura — cuido de acessos, sistemas e equipamentos. Para demandas de obras/serviços, o canal correto é a Secretaria de Obras (ramal 4030). Posso ajudar em algo de TI?','01:31'),
+  M('user','ah entendi, era engano','01:31'),
+  M('ai','Sem problema! Qualquer coisa de TI, é só chamar. 👍','01:32')
+ ]),
+ mkc(9,'Carla Santos','Administração','ADM','WhatsApp','ontem',4480,true,false,[
+  M('user','preciso de acesso administrativo ao servidor de arquivos','01/06 17:10'),
+  M('ai','Carla, acesso administrativo é um privilégio elevado e exige *dupla aprovação* (gestor + Coordenação de TI). Vou registrar a solicitação. Qual a justificativa?','01/06 17:11'),
+  M('user','vou gerenciar as permissões do meu setor','01/06 17:12'),
+  M('sys','✓ Chamado #4480 aberto — requer dupla aprovação','01/06 17:12','teal'),
+  M('sys','👤 Lucas Teixeira (TI) assumiu a conversa','01/06 17:20','pink'),
+  M('tec','Oi Carla, esse nível de acesso a Coordenação precisa avaliar com cuidado. Vou agendar uma validação rápida com seu gestor ainda hoje.','01/06 17:22','Lucas Teixeira')
+ ]),
+ mkc(10,'Fernanda Lima','Saúde','SAU','WhatsApp','ontem',4475,false,true,[
+  M('user','',  '01/06 14:02',{audio:{dur:'0:11',transcript:'preciso resetar a senha urgente, não consigo entrar no PEC'}}),
+  M('ai','Entendi a urgência, Fernanda! Reset de senha (1.2). Confirme seu login de rede:','01/06 14:02'),
+  M('user','flima','01/06 14:03'),
+  M('sys','✓ Chamado #4475 aberto (prioridade alta)','01/06 14:03','teal'),
+  M('sys','⚡ Senha de flima redefinida no AD','01/06 14:05','grad'),
+  M('ai','✅ Senha provisória enviada ao seu e-mail. Você já pode acessar o PEC.','01/06 14:05')
+ ]),
+ mkc(11,'Marcos Pereira','Educação','EDU','Formulário','ontem',4468,false,false,[
+  M('sys','📝 Chamado aberto via Formulário GLPI (Transferência de setor)','31/05 10:00','teal'),
+  M('ai','Solicitação de transferência recebida: Marcos Pereira → nova lotação E.M. Paulo Freire.','31/05 10:00'),
+  M('sys','✓ Aprovado pelo gestor de origem e destino','31/05 11:30','blue'),
+  M('sys','⚡ Grupos antigos removidos, perfil do novo setor aplicado','31/05 11:31','grad'),
+  M('sys','⚡ Usuário movido para OU=Educacao e nova senha gerada','31/05 11:31','grad'),
+  M('ai','✅ Transferência concluída. Marcos Pereira já está com os acessos do novo setor.','31/05 11:31')
+ ]),
+ mkc(12,'Ricardo Almeida','TI','TI','WhatsApp','agora',null,false,false,[
+  M('user','boa, o teams não abre na minha máquina','09:39'),
+  M('ai','Oi Ricardo! Vamos resolver. Isso é um Suporte de Informática (2). O Teams dá alguma mensagem de erro ao abrir?','09:40'),
+  M('user','fica carregando e fecha sozinho','09:40'),
+  M('ai','Entendi. Pode tentar: 1) fechar pelo Gerenciador de Tarefas, 2) limpar a pasta %appdata%\\\\Microsoft\\\\Teams. Se persistir, abro um chamado pra um técnico ir aí. Funcionou?','09:41')
+ ])
+];
+// events
+const EVTYPES=[['criacao','Usuário {n} criado no AD','teal','ti-user-plus'],['aprovacao','Chamado #{t} aprovado por {g}','blue','ti-checks'],['exec','Execução AD concluída para #{t}','grad','ti-bolt'],['sla','Chamado #{t} violou o SLA','red','ti-alert-triangle'],['deslig','Desligamento detectado no SMARAPD — matrícula {m}','amber','ti-user-off']];
+(function(){for(let i=0;i<42;i++){const t=rnd(EVTYPES);const d=new Date(NOW-i*Math.floor(Math.random()*900000+200000));
+ let msg=t[1].replace('{n}',rnd(['JCSLima','HMartins','rsouza','flima','bteixeira'])).replace('{t}',4560-Math.floor(Math.random()*60)).replace('{g}',rnd(['mpereira@','lteixeira@','jroberto@'])).replace('{m}',60000+Math.floor(Math.random()*9000));
+ STATE.events.push({type:t[0],msg,color:t[2],icon:t[3],time:d});}})();
+// access logs
+(function(){const acts=['Login','Logout','Tentativa falha','Login (AD SSO)'];const navs=['Chrome 124 / Windows','Edge 124 / Windows','Firefox 125 / Linux','Safari / macOS'];
+ for(let i=0;i<82;i++){const d=new Date(NOW-i*Math.floor(Math.random()*4000000+300000));const u=rnd(STATE.users);const a=rnd(acts);
+ STATE.accessLogs.push({d,user:u.nome,email:u.email,ip:'10.10.'+Math.floor(Math.random()*8)+'.'+Math.floor(Math.random()*254),loc:'Araraquara/SP',dev:rnd(navs),act:a,res:a.includes('falha')?'Falha':'Sucesso'});}})();
+// operation logs
+(function(){const templates=[['alterou status do chamado #{t}','aberto → em execução'],['executou criação de usuário','JCSLima criado no AD'],['aprovou chamado #{t}','pendente → aprovado'],['exportou relatório SLA mensal','PDF'],['criou usuário do sistema','jsilva'],['editou SLA da categoria','Reset de senha: 4h → 2h'],['desativou conta','phenrique → OU Desativados'],['alterou perfil de usuário','tecnico → coord']];
+ for(let i=0;i<120;i++){const d=new Date(NOW-i*Math.floor(Math.random()*3000000+200000));const u=rnd(STATE.users);const t=rnd(templates);
+ STATE.operationLogs.push({d,user:u.nome,profile:PROFILES[u.profile].name,acao:t[0].replace('{t}',4560-Math.floor(Math.random()*60)),delta:t[1],ip:'10.10.'+Math.floor(Math.random()*8)+'.'+Math.floor(Math.random()*254)});}})();
+
+/* ===================== NAV CONFIG ===================== */
+const NAV=[
+ {g:'Dashboard',items:[
+   {id:'overview',t:'Visão geral',i:'ti-layout-dashboard'},
+   {id:'kanban',t:'Kanban',i:'ti-layout-kanban'},
+   {id:'sla',t:'SLA & Métricas',i:'ti-chart-line'},
+   {id:'live',t:'Atividade ao vivo',i:'ti-activity'}]},
+ {g:'Operação',items:[
+   {id:'tickets',t:'Chamados',i:'ti-ticket'},
+   {id:'conversas',t:'Histórico de conversas',i:'ti-messages'},
+   {id:'agente',t:'Agente IA',i:'ti-robot'}]},
+ {g:'Gestão',need:['manage_users','manage_sectors','config','manage_profiles'],items:[
+   {id:'sysusers',t:'Usuários do sistema',i:'ti-users',need:'manage_users'},
+   {id:'profiles',t:'Perfis e permissões',i:'ti-shield-lock',need:'manage_profiles'},
+   {id:'sectors',t:'Setores',i:'ti-building',need:'manage_sectors'},
+   {id:'config',t:'Configurações',i:'ti-settings',need:'config'}]},
+ {g:'Auditoria',need:['view_audit'],items:[
+   {id:'accesslogs',t:'Logs de acesso',i:'ti-login',need:'view_audit'},
+   {id:'oplogs',t:'Logs de operação',i:'ti-list-check',need:'view_audit'},
+   {id:'reports',t:'Relatórios',i:'ti-report',need:'view_audit'}]}
+];
+let CURRENT='overview';
+
+/* ===================== LOGIN LOGIC ===================== */
+function togglePw(id,el){const i=document.getElementById(id);if(i.type==='password'){i.type='text';el.className='ti ti-eye-off toggle'}else{i.type='password';el.className='ti ti-eye toggle'}}
+function doLogin(sso){
+ const email=document.getElementById('lgEmail').value.trim().toLowerCase();
+ const err=document.getElementById('lgErr');
+ if(STATE.blockedUntil&&Date.now()<STATE.blockedUntil){err.textContent='Conta bloqueada por 5 minutos após várias tentativas.';err.classList.remove('hidden');return}
+ const valid=/^[^@\s]+@araraquara\.sp\.gov\.br$/.test(email);
+ const known=STATE.users.find(u=>u.email===email);
+ if(!valid){STATE.loginAttempts++;if(STATE.loginAttempts>=3){STATE.blockedUntil=Date.now()+300000;err.textContent='Conta bloqueada por 5 minutos após 3 tentativas.';}else{err.textContent='E-mail inválido. Use o domínio @araraquara.sp.gov.br ('+(3-STATE.loginAttempts)+' tentativas restantes).';}err.classList.remove('hidden');return}
+ STATE.loginAttempts=0;err.classList.add('hidden');
+ STATE.currentUser=known||{id:99,nome:email.split('@')[0],email,profile:'tecnico',sector:'TI',status:'ativo',primeiro_acesso:false};
+ STATE.viewAs=null;
+ document.getElementById('login').style.display='none';
+ document.getElementById('app').style.display='flex';
+ buildShell();navigate('overview');startClock();startLive();
+ if(STATE.currentUser.primeiro_acesso){setTimeout(openChangePass,400)}
+ toast((sso?'Login via AD: ':'Bem-vindo, ')+STATE.currentUser.nome);
+}
+function logout(){STATE.currentUser=null;STATE.viewAs=null;stopLive();document.getElementById('app').style.display='none';document.getElementById('login').style.display='flex';closeMenus()}
+
+/* ===================== SHELL ===================== */
+function buildShell(){
+ const u=STATE.currentUser;document.getElementById('avatar').textContent=initials(u.nome);
+ const side=document.getElementById('side');side.innerHTML='';
+ NAV.forEach(grp=>{
+   if(grp.need&&!grp.need.some(p=>can(p)))return;
+   const visibleItems=grp.items.filter(it=>!it.need||can(it.need));
+   if(!visibleItems.length)return;
+   side.insertAdjacentHTML('beforeend',`<div class="grp">${grp.g}</div>`);
+   visibleItems.forEach(it=>{
+     side.insertAdjacentHTML('beforeend',`<div class="navi" data-id="${it.id}" onclick="navigate('${it.id}')"><i class="ti ${it.i}"></i><span>${it.t}</span></div>`);
+   });
+ });
+ renderViewAsBanner();
+}
+function renderViewAsBanner(){
+ const b=document.getElementById('viewasBanner');
+ if(STATE.viewAs){b.classList.remove('hidden');b.innerHTML=`<i class="ti ti-eye"></i> Visualizando como <b style="margin:0 4px">${PROFILES[STATE.viewAs].name}</b> — a UI está limitada às permissões desse perfil. <a class="linklike" style="margin-left:auto" onclick="setViewAs(null)">Voltar ao meu perfil</a>`;}
+ else b.classList.add('hidden');
+}
+function initials(n){return n.split(' ').filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()}
+function toggleSide(){document.getElementById('side').classList.toggle('collapsed')}
+function setActiveNav(){document.querySelectorAll('.navi').forEach(n=>n.classList.toggle('active',n.dataset.id===CURRENT))}
+
+function toggleAvatar(){closeMenus('avatarMenu');const m=document.getElementById('avatarMenu');m.classList.toggle('hidden');if(m.classList.contains('hidden'))return;
+ const u=STATE.currentUser;
+ m.innerHTML=`<div style="padding:10px 11px;border-bottom:1px solid var(--brd);margin-bottom:6px"><div style="font-weight:600">${u.nome}</div><div class="muted" style="font-size:12px">${u.email}</div><span class="badge b-teal mt8">${PROFILES[u.profile].name}</span></div>
+ <div class="navi" onclick="navigate('myprofile');closeMenus()"><i class="ti ti-user"></i><span>Meu perfil</span></div>
+ <div class="navi" onclick="toggleViewAsSub()"><i class="ti ti-eye"></i><span>Visualizar como ▾</span></div>
+ <div id="viewasSub" class="hidden" style="padding-left:8px">${Object.keys(PROFILES).map(p=>`<div class="navi" onclick="setViewAs('${p}')"><i class="ti ti-point"></i><span>${PROFILES[p].name}</span></div>`).join('')}</div>
+ ${can('config')?'<div class="navi" onclick="navigate(\'config\');closeMenus()"><i class="ti ti-settings"></i><span>Configurações</span></div>':''}
+ <div class="navi" onclick="logout()" style="color:var(--err)"><i class="ti ti-logout"></i><span>Sair</span></div>`;
+}
+function toggleViewAsSub(){document.getElementById('viewasSub').classList.toggle('hidden')}
+function setViewAs(p){STATE.viewAs=p;closeMenus();buildShell();navigate('overview');toast(p?'Visualizando como '+PROFILES[p].name:'Voltou ao seu perfil')}
+function toggleNotif(){closeMenus('notifMenu');const m=document.getElementById('notifMenu');m.classList.toggle('hidden');if(m.classList.contains('hidden'))return;
+ m.innerHTML=`<div style="padding:8px 10px;font-weight:600;border-bottom:1px solid var(--brd);margin-bottom:4px">Notificações</div>`+
+ [['ti-alert-triangle','red','Chamado #4512 violou o SLA'],['ti-user-off','amber','Desligamento detectado: matrícula 60112'],['ti-checks','blue','Chamado #4521 aprovado'],['ti-bolt','teal','Execução AD concluída (#4519)'],['ti-message','pink','Lucas assumiu a conversa #4505']]
+ .map(n=>`<div class="navi"><i class="ti ${n[0]}" style="color:var(--${n[1]==='red'?'err':n[1]==='amber'?'warn':n[1]==='blue'?'s':n[1]==='pink'?'a':'p'})"></i><span style="white-space:normal;font-size:12.5px">${n[2]}</span></div>`).join('');
+}
+function closeMenus(except){['avatarMenu','notifMenu'].forEach(id=>{if(id!==except)document.getElementById(id).classList.add('hidden')})}
+document.addEventListener('click',e=>{if(!e.target.closest('.iconbtn')&&!e.target.closest('#avatar')&&!e.target.closest('#avatarMenu')&&!e.target.closest('#notifMenu'))closeMenus()});
+
+/* ===================== ROUTER ===================== */
+function navigate(id){
+ const item=NAV.flatMap(g=>g.items).find(i=>i.id===id);
+ if(item&&item.need&&!can(item.need)){renderDenied();CURRENT=id;return}
+ CURRENT=id;setActiveNav();closeMenus();
+ const v=document.getElementById('view');
+ ({overview:renderOverview,kanban:renderKanban,sla:renderSLA,live:renderLive,tickets:renderTickets,
+   conversas:renderConversas,agente:renderAgente,sysusers:renderSysUsers,profiles:renderProfiles,
+   sectors:renderSectors,config:renderConfig,accesslogs:renderAccessLogs,oplogs:renderOpLogs,
+   reports:renderReports,myprofile:renderMyProfile}[id]||renderOverview)(v);
+ v.scrollTop=0;document.querySelector('.content').scrollTop=0;
+}
+function renderDenied(){document.getElementById('view').innerHTML=`<div class="empty"><i class="ti ti-lock-x"></i>Você não tem acesso a esta operação.<div class="mt8 muted">Seu perfil (${PROFILES[effectiveProfile()].name}) não permite ver esta seção.</div></div>`}
+function ph(title,sub,extra=''){return `<div class="page-head"><div><h2>${title}</h2><p>${sub}</p></div><div class="flex ic-gap wrap center">${extra}</div></div>`}
+
+/* ===================== VIEWS ===================== */
+function renderOverview(v){
+ const u=STATE.currentUser;const pr=effectiveProfile();
+ const sectorLock=pr==='gestor';
+ v.innerHTML=`
+ <div class="hero">
+   <div class="flex center wrap" style="justify-content:space-between;gap:14px">
+     <div><h1>Bem-vindo, ${u.nome.split(' ')[0]} 👋</h1><p>${STATE.currentUser.sector} · ${PROFILES[pr].name}${sectorLock?' · filtro travado no seu setor':''}</p></div>
+     <div class="seg">${['7d','30d','90d'].map((p,i)=>`<button class="${i==1?'on':''}" onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));this.classList.add('on');toast('Período: ${p}')">${p}</button>`).join('')}</div>
+   </div>
+   ${(can('view_all'))?`<div class="mt16 flex ic-gap wrap"><span class="muted" style="font-size:12px">Filtrar setor:</span><select class="inp" style="width:auto" onchange="toast('Filtro: '+this.value)"><option>Todos os setores</option>${SECTORS.map(s=>`<option>${s.nome}</option>`).join('')}</select></div>`:`<div class="mt16"><span class="chip active"><i class="ti ti-lock"></i> Setor: ${u.sector}</span></div>`}
+ </div>
+ <div class="grid g4">
+   ${metric('ti-ticket','var(--g1)','247','Chamados no período','+12% vs ant.','up')}
+   ${metric('ti-gauge','var(--g1)','91%','SLA cumprido','+3pts','up')}
+   ${metric('ti-robot','var(--g2)','83%','Resolvidos por IA','+6pts','up')}
+   ${metric('ti-bolt','var(--g1)','312','Execuções AD','+28','up')}
+ </div>
+ <div class="grid g3 mt16">
+   ${miniCard('ti-user-off','var(--warn)','Próximo desligamento','Paulo Henrique (Obras) · matrícula 60112','detectado pelo SMARAPD há 6h')}
+   ${miniCard('ti-clock-pause','var(--err)','Conta mais inativa no AD','jsantos · 142 dias sem login','sugestão: revisar')}
+   ${miniCard('ti-alert-triangle','var(--a)','Último incidente','Chamado #4512 violou SLA','categoria Reset de senha')}
+ </div>`;
+}
+function metric(ic,grad,v,l,trend,dir){return `<div class="card metric"><div class="ic" style="background:${grad};color:#04121a"><i class="ti ${ic}"></i></div><div class="v">${v}</div><div class="l">${l}</div><div class="trend ${dir}"><i class="ti ti-trending-${dir==='up'?'up':'down'}"></i>${trend}</div></div>`}
+function miniCard(ic,c,t,m,s){return `<div class="card sm"><div class="flex ic-gap center"><i class="ti ${ic}" style="font-size:24px;color:${c}"></i><div><div class="muted" style="font-size:11px">${t}</div><div style="font-weight:600;font-size:14px">${m}</div><div class="muted" style="font-size:11px">${s}</div></div></div></div>`}
+
+function ticketsForUser(){const pr=effectiveProfile();if(pr==='gestor'){return STATE.tickets.filter(t=>t.sector===STATE.currentUser.sector)}return STATE.tickets}
+function renderKanban(v){
+ const cols=[['aberto','Aberto'],['aguardando_aprovacao','Aguardando aprovação'],['em_execucao','Em execução'],['resolvido','Resolvido'],['violou_sla','Violou SLA']];
+ const data=ticketsForUser();
+ v.innerHTML=ph('Kanban','Arraste os cards entre as colunas'+(effectiveProfile()==='gestor'?' · mostrando só seu setor':''),
+   `<div class="search" style="flex:0 0 240px"><i class="ti ti-search"></i><input placeholder="Buscar chamado..." oninput="filterKanban(this.value)"></div>`)+
+ `<div class="kanban" id="kanban">${cols.map(c=>`
+   <div class="kcol" data-st="${c[0]}" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="dropCard(event,'${c[0]}')">
+     <h4>${c[1]} <span class="badge b-grey">${data.filter(t=>t.status===c[0]).length}</span></h4>
+     ${data.filter(t=>t.status===c[0]).map(kcard).join('')}
+   </div>`).join('')}</div>`;
+}
+function slaColor(s){return s>60?'var(--ok)':s>30?'var(--warn)':'var(--err)'}
+function kcard(t){return `<div class="kcard" draggable="${can('move_kanban')}" data-id="${t.id}" ondragstart="event.dataTransfer.setData('id','${t.id}')" onclick="openTicket(${t.id})">
+  <div class="slabar" style="background:${slaColor(t.sla)}"></div>
+  <div class="kid mono">#${t.id}</div><div class="kt">${t.cat}</div>
+  <div class="kmeta"><i class="ti ${CHICON[t.canal]}"></i> ${t.sigla} · ${relTime(t.aberto)} · <span class="badge b-grey">${t.prio}</span></div></div>`}
+function dropCard(e,st){e.preventDefault();document.querySelectorAll('.kcol').forEach(c=>c.classList.remove('drag'));
+ if(!can('move_kanban')){toast('Seu perfil não pode mover cards');return}
+ const id=+e.dataTransfer.getData('id');const t=STATE.tickets.find(x=>x.id===id);if(t){const old=t.status;t.status=st;logOp('alterou status do chamado #'+id,STLABEL[old]+' → '+STLABEL[st]);renderKanban(document.getElementById('view'));toast('Chamado #'+id+' → '+STLABEL[st])}}
+function filterKanban(q){q=q.toLowerCase();document.querySelectorAll('.kcard').forEach(c=>{const t=STATE.tickets.find(x=>x.id==c.dataset.id);c.style.display=(!q||(''+t.id+t.cat+t.sol).toLowerCase().includes(q))?'':'none'})}
+
+function renderSLA(v){
+ v.innerHTML=ph('SLA & Métricas','Indicadores de desempenho do atendimento',`<button class="btn btn-line btn-sm" onclick="${can('export')?'openExport()':'toast(\'Sem permissão para exportar\')'}"><i class="ti ti-file-export"></i> Exportar PDF</button>`)+
+ `<div class="grid g2">
+   <div class="card"><h4 class="mb12">Evolução do SLA mensal</h4><canvas id="c1" height="150"></canvas></div>
+   <div class="card"><h4 class="mb12">SLA por categoria</h4><canvas id="c2" height="150"></canvas></div>
+   <div class="card"><h4 class="mb12">Chamados por semana (canal)</h4><canvas id="c3" height="150"></canvas></div>
+   <div class="card"><h4 class="mb12">Distribuição por categoria</h4><canvas id="c4" height="150"></canvas></div>
+ </div>`;
+ setTimeout(initCharts,40);
+}
+let charts=[];
+function initCharts(){
+ charts.forEach(c=>c.destroy&&c.destroy());charts=[];
+ Chart.defaults.color='rgba(248,249,250,.6)';Chart.defaults.borderColor='rgba(255,255,255,.07)';Chart.defaults.font.family='Outfit';
+ const g=document.getElementById('c1').getContext('2d');const grad=g.createLinearGradient(0,0,0,180);grad.addColorStop(0,'rgba(0,217,192,.4)');grad.addColorStop(1,'rgba(0,217,192,0)');
+ charts.push(new Chart(g,{type:'line',data:{labels:['Jan','Fev','Mar','Abr','Mai','Jun'],datasets:[{data:[82,85,88,86,90,91],borderColor:'#00D9C0',backgroundColor:grad,fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#00D9C0'}]},options:co({y:{min:70,max:100}})}));
+ charts.push(new Chart(document.getElementById('c2'),{type:'bar',data:{labels:['Reset senha','Criação','Desativação','Acesso pasta','Transferência','E-mail'],datasets:[{data:[96,92,99,84,88,90],backgroundColor:['#3ddc97','#00D9C0','#3ddc97','#FFB454','#5B7FDE','#00D9C0'],borderRadius:6}]},options:{...co({x:{max:100}}),indexAxis:'y'}}));
+ charts.push(new Chart(document.getElementById('c3'),{type:'bar',data:{labels:['S1','S2','S3','S4'],datasets:[{label:'WhatsApp',data:[34,41,38,45],backgroundColor:'#00D9C0',borderRadius:5},{label:'Formulário',data:[18,22,20,25],backgroundColor:'#5B7FDE',borderRadius:5},{label:'Manual',data:[6,5,7,4],backgroundColor:'#E85D9A',borderRadius:5}]},options:{...co(),plugins:{legend:{display:true,position:'bottom'}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true}}}}));
+ charts.push(new Chart(document.getElementById('c4'),{type:'doughnut',data:{labels:['Reset senha','Criação','Desativação','Acesso pasta','Outros'],datasets:[{data:[38,24,12,14,12],backgroundColor:['#00D9C0','#5B7FDE','#E85D9A','#FFB454','#9db4ff'],borderWidth:0}]},options:{plugins:{legend:{position:'right'}},cutout:'62%'}}));
+}
+function co(scales){return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scales||{}}}
+
+function renderLive(v){
+ v.innerHTML=ph('Atividade ao vivo','Feed em tempo real das operações',`<button class="btn btn-line btn-sm" id="pauseBtn" onclick="togglePause()"><i class="ti ti-player-pause"></i> Pausar</button>`)+
+ `<div class="card"><div class="tl" id="feed">${STATE.events.map(feedItem).join('')}</div></div>`;
+}
+function feedItem(e){const cmap={teal:'var(--p)',blue:'var(--s)',grad:'',red:'var(--err)',amber:'var(--warn)'};
+ const bg=e.color==='grad'?'background:var(--g1)':'background:'+cmap[e.color];
+ return `<div class="tlitem"><div class="tdot" style="${bg}"><i class="ti ${e.icon}"></i></div><div class="tx">${e.msg}</div><div class="tm mono">${fmtDate(e.time)}</div></div>`}
+function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementById('pauseBtn');b.innerHTML=STATE.paused?'<i class="ti ti-player-play"></i> Retomar':'<i class="ti ti-player-pause"></i> Pausar'}
+function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;const t=rnd(EVTYPES);const e={type:t[0],color:t[2],icon:t[3],time:new Date(),msg:t[1].replace('{n}',rnd(['BTeixeira','VCruz','FAndrade'])).replace('{t}',4560-Math.floor(Math.random()*60)).replace('{g}',rnd(['mpereira@','lteixeira@'])).replace('{m}',60000+Math.floor(Math.random()*9000))};
+ STATE.events.unshift(e);if(CURRENT==='live'){const f=document.getElementById('feed');if(f){f.insertAdjacentHTML('afterbegin',feedItem(e));f.firstElementChild.style.animation='slidein .4s ease'}}
+ const nc=document.getElementById('notifCount');if(nc)nc.textContent=Math.min(99,+nc.textContent+1);
+ },Math.floor(Math.random()*7000+8000))}
+function stopLive(){if(STATE.liveTimer)clearInterval(STATE.liveTimer)}
+
+function renderTickets(v){
+ const data=ticketsForUser();
+ v.innerHTML=ph('Chamados',data.length+' chamados'+(effectiveProfile()==='gestor'?' do seu setor':''),`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
+ `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar por ID, solicitante, categoria..." oninput="filterTickets(this.value)"></div>
+   <select class="inp" style="width:auto" onchange="filterTicketsStatus(this.value)"><option value="">Todos status</option>${STATUSES.map(s=>`<option value="${s}">${STLABEL[s]}</option>`).join('')}</select></div>
+ <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr><th>ID</th><th>Solicitante</th><th>Setor</th><th>Categoria</th><th>Canal</th><th>Status</th><th>SLA</th><th>Atribuído</th><th>Aberto</th><th></th></tr></thead><tbody>
+ ${data.map(ticketRow).join('')}</tbody></table></div>`;
+}
+function ticketRow(t){return `<tr data-id="${t.id}" data-st="${t.status}" data-s="${(t.id+t.sol+t.cat+t.sector).toLowerCase()}" onclick="openTicket(${t.id})" style="cursor:pointer">
+ <td class="mono">#${t.id}</td><td>${t.sol}</td><td>${t.sigla}</td><td>${t.cat}</td><td><i class="ti ${CHICON[t.canal]}"></i> ${t.canal}</td>
+ <td><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span></td>
+ <td><div class="barh" style="width:54px"><i style="width:${t.sla}%;background:${slaColor(t.sla)}"></i></div></td>
+ <td>${t.assignee}</td><td class="mono" style="font-size:11px">${relTime(t.aberto)}</td>
+ <td class="actions-cell" onclick="event.stopPropagation()"><button class="iconbtn" onclick="openTicket(${t.id})"><i class="ti ti-eye"></i></button></td></tr>`}
+function filterTickets(q){q=q.toLowerCase();document.querySelectorAll('#ttbl tbody tr').forEach(r=>{r.style.display=(!q||r.dataset.s.includes(q))?'':'none'})}
+function filterTicketsStatus(s){document.querySelectorAll('#ttbl tbody tr').forEach(r=>{r.style.display=(!s||r.dataset.st===s)?'':'none'})}
+
+function openTicket(id){const t=STATE.tickets.find(x=>x.id===id);if(!t)return;
+ const conv=STATE.conversations.find(c=>c.ticket===id);
+ modal(`<div class="side-modal">
+  <div class="mh"><div><div class="mono muted">#${t.id}</div><h3>${t.cat}</h3><div class="msub">${t.sol} · ${t.sector}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+  <span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span> <span class="badge b-grey">${t.prio}</span> <span class="badge b-grey"><i class="ti ${CHICON[t.canal]}"></i> ${t.canal}</span>
+  <div class="mt16">
+   <div class="kv"><span class="k">Solicitante</span><span>${t.sol}</span></div>
+   <div class="kv"><span class="k">Setor</span><span>${t.sector}</span></div>
+   <div class="kv"><span class="k">Atribuído</span><span>${t.assignee}</span></div>
+   <div class="kv"><span class="k">SLA restante</span><span style="color:${slaColor(t.sla)}">${t.sla}%</span></div>
+   <div class="kv"><span class="k">Aberto em</span><span class="mono">${fmtDate(t.aberto)}</span></div>
+  </div>
+  <h4 class="mt16 mb12">Timeline</h4>
+  <div class="tl">
+   <div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${t.canal}</div><div class="tm mono">${fmtDate(t.aberto)}</div></div>
+   <div class="tlitem"><div class="tdot" style="background:var(--s)"><i class="ti ti-checks"></i></div><div class="tx">Encaminhado para aprovação</div><div class="tm">há ${relTime(t.aberto)}</div></div>
+   ${t.status==='resolvido'||t.status==='em_execucao'?'<div class="tlitem"><div class="tdot" style="background:var(--g1)"><i class="ti ti-bolt"></i></div><div class="tx">Execução no Active Directory iniciada</div><div class="tm">automático</div></div>':''}
+  </div>
+  ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${id})</a>`:''}
+  <div class="btnrow">
+   ${can('approve')?`<button class="btn btn-grad btn-sm" onclick="ticketAction(${id},'Aprovado')"><i class="ti ti-check"></i> Aprovar</button>`:''}
+   ${can('execute_ad')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Execução disparada')"><i class="ti ti-bolt"></i> Executar</button>`:''}
+   ${can('update_status')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Encerrado')"><i class="ti ti-circle-check"></i> Encerrar</button>`:''}
+   ${effectiveProfile()==='auditor'?'<span class="muted" style="font-size:12px">Modo somente leitura</span>':''}
+  </div>
+ </div>`);
+}
+function ticketAction(id,a){logOp(a.toLowerCase()+' chamado #'+id,'ação manual');toast('#'+id+': '+a+' (simulado)');closeModal()}
+
+/* ===== CONVERSAS (estrela) ===== */
+let selectedConv=null;
+function convListForUser(){const pr=effectiveProfile();if(pr==='gestor')return STATE.conversations.filter(c=>c.sector.includes('Saúde')||c.sigla==='SAU');return STATE.conversations}
+function renderConversas(v){
+ const list=convListForUser();selectedConv=selectedConv||list[0]?.id;
+ v.innerHTML=ph('Histórico de conversas',list.length+' conversas'+(effectiveProfile()==='gestor'?' do seu setor':''))+
+ `<div class="chatwrap">
+   <div class="convlist">
+     <div class="lh"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar na conversa..." oninput="filterConv(this.value)"></div>
+       <div class="flex wrap" style="gap:5px;margin-top:9px">${['Todos','WhatsApp','Formulário','RH-auto','Com técnico'].map((c,i)=>`<span class="chip ${i==0?'active':''}" onclick="convChip(this,'${c}')">${c}</span>`).join('')}</div></div>
+     <div class="scroller" id="convScroller">${list.map(convItem).join('')}</div>
+   </div>
+   <div class="thread" id="thread">${threadHtml(list.find(c=>c.id===selectedConv))}</div>
+ </div>`;
+}
+function convColor(sig){const map={SAU:'#3ddc97',TI:'#00D9C0',EDU:'#5B7FDE',FIN:'#FFB454',RH:'#E85D9A',JUR:'#9db4ff',OBR:'#FF9A6C',ADM:'#00D9C0'};return map[sig]||'#00D9C0'}
+function convItem(c){const last=c.msgs[c.msgs.length-1];const prev=last.audio?'🎤 Áudio':last.text.split('\n')[0].slice(0,46);
+ return `<div class="convitem ${c.id===selectedConv?'sel':''}" data-id="${c.id}" data-s="${(c.nome+c.sector+c.msgs.map(m=>m.text).join(' ')).toLowerCase()}" data-canal="${c.canal}" data-hum="${c.humano}" onclick="selectConv(${c.id})">
+  <div class="cav" style="background:${convColor(c.sigla)}">${initials(c.nome)}</div>
+  <div class="cmain"><div class="crow"><span class="cname">${c.nome}</span><span class="ctime">${c.rel}</span></div>
+   <div class="csec">${c.sector}</div><div class="cprev">${prev}</div>
+   <div class="ctags">${c.ticket?`<span class="badge b-teal">#${c.ticket}</span>`:`<span class="badge b-grey">sem ticket</span>`}<i class="ti ${CHICON[c.canal]}" style="font-size:13px;color:var(--mut)"></i>${c.humano?'<i class="ti ti-user-check" style="font-size:13px;color:var(--a)" title="Intervenção humana"></i>':''}${c.audio?'<i class="ti ti-microphone" style="font-size:13px;color:var(--mut)"></i>':''}</div>
+  </div></div>`}
+function selectConv(id){selectedConv=id;document.querySelectorAll('.convitem').forEach(x=>x.classList.toggle('sel',+x.dataset.id===id));
+ const c=STATE.conversations.find(x=>x.id===id);document.getElementById('thread').innerHTML=threadHtml(c);}
+function filterConv(q){q=q.toLowerCase();document.querySelectorAll('.convitem').forEach(x=>x.style.display=(!q||x.dataset.s.includes(q))?'':'none')}
+function convChip(el,c){el.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));el.classList.add('active');
+ document.querySelectorAll('.convitem').forEach(x=>{let show=true;if(c==='Com técnico')show=x.dataset.hum==='true';else if(c!=='Todos')show=x.dataset.canal===c;x.style.display=show?'':'none'})}
+function threadHtml(c){if(!c)return '<div class="empty"><i class="ti ti-message-2"></i>Selecione uma conversa</div>';
+ const ro=effectiveProfile()==='auditor';
+ return `<div class="th"><div><div style="font-weight:600;font-size:15px">${c.nome}</div><div class="muted" style="font-size:12px">${c.sector} · ${c.canal} ${c.ticket?`· <span class="linklike" onclick="openTicket(${c.ticket})">#${c.ticket}</span>`:''}</div>
+   <div class="flex wrap mt8" style="gap:6px">${c.ticket?`<span class="badge ${STBADGE[STATE.tickets.find(t=>t.id===c.ticket)?.status||'resolvido']}">${STLABEL[STATE.tickets.find(t=>t.id===c.ticket)?.status||'resolvido']}</span>`:''}<span class="badge ${c.humano?'b-pink':'b-teal'}">${c.humano?'Técnico ativo':'Agente IA'}</span></div></div>
+   <div class="flex ic-gap">${!ro&&can('assume')?`<button class="btn btn-line btn-sm" onclick="toast('Conversa assumida por '+STATE.currentUser.nome.split(' ')[0])"><i class="ti ti-hand-grab"></i> Assumir</button>`:''}${!ro?`<button class="btn btn-line btn-sm" onclick="toast('Atendimento encerrado (simulado)')"><i class="ti ti-circle-x"></i></button>`:''}</div></div>
+  <div class="msgs">${c.msgs.map(bubble).join('')}</div>
+  <div class="composer">${ro?'<span class="muted" style="margin:auto">Modo somente leitura — Auditor não pode responder</span>':`<input placeholder="Digite uma mensagem..." onkeydown="if(event.key==='Enter'&&this.value){toast('Mensagem enviada (simulado)');this.value=''}"><button class="iconbtn" style="background:var(--g1);color:#04121a" onclick="toast('Mensagem enviada (simulado)')"><i class="ti ti-send"></i></button>`}</div>`}
+function bubble(m){
+ if(m.from==='sys'){const cmap={teal:'b-teal',blue:'b-blue',grad:'b-teal',pink:'b-pink',amber:'b-amber'};return `<div class="sysmsg ${cmap[m.color]||'b-grey'}" ${m.color==='grad'?'style="background:linear-gradient(135deg,rgba(0,217,192,.18),rgba(91,127,222,.18));color:#bff7ee"':''}>${m.text} · <span class="mono" style="opacity:.7">${m.time}</span></div>`}
+ let cls=m.from==='user'?'b-user':m.from==='ai'?'b-ai':'b-tec';
+ let who=m.from==='ai'?'<div class="who"><i class="ti ti-robot"></i> Agente IA</div>':m.from==='tec'?`<div class="who"><i class="ti ti-user"></i> ${m.name} · Técnico</div>`:'';
+ let body;
+ if(m.audio){body=`<div class="audio"><div class="playbtn"><i class="ti ti-player-play-filled"></i></div><div class="wave">${Array.from({length:26}).map(()=>`<i style="height:${4+Math.random()*18}px"></i>`).join('')}</div><span class="mono" style="font-size:11px">${m.audio.dur}</span></div>${m.audio.transcript?`<div class="transcript">transcrito: "${m.audio.transcript}"</div>`:''}`}
+ else body=m.text.replace(/\n/g,'<br>');
+ return `<div class="bubble ${cls}">${who}${body}<div class="bt mono">${m.time}</div></div>`}
+
+function renderAgente(v){
+ v.innerHTML=ph('Agente IA','Desempenho da automação conversacional',`<button class="btn btn-line btn-sm" onclick="toast('Relatório mensal gerado (simulado)')"><i class="ti ti-report"></i> Gerar relatório mensal</button>`)+
+ `<div class="grid g4">
+   ${agStat('1.847','conversas no mês','ti-messages')}${agStat('83%','resolvidas sem humano','ti-robot')}${agStat('3m42s','tempo médio','ti-clock')}${agStat('312','execuções AD','ti-bolt')}
+ </div>
+ <div class="grid g2 mt16">
+  <div class="card"><h4 class="mb12">Operações por tipo</h4>
+   ${[['Criação de usuário',92],['Reset de senha',184],['Reativação',31],['Desativação',47],['Transferência',22],['Criação de e-mail',38],['Acesso a pasta',54]].map(o=>`<div class="mb12"><div class="flex" style="justify-content:space-between;font-size:13px"><span>${o[0]}</span><span class="mono muted">${o[1]}</span></div><div class="barh mt8"><i style="width:${Math.min(100,o[1]/2)}%"></i></div></div>`).join('')}</div>
+  <div class="card" style="background:linear-gradient(135deg,rgba(0,217,192,.1),rgba(91,127,222,.08))">
+   <h4 class="mb12">Retorno (ROI)</h4>
+   <div class="grid g2">
+    <div><div class="statbig gradtext">428h</div><div class="muted" style="font-size:12px">horas economizadas / mês</div></div>
+    <div><div class="statbig gradtext">R$ 41,2k</div><div class="muted" style="font-size:12px">economia estimada / mês</div></div>
+    <div><div class="statbig">−67%</div><div class="muted" style="font-size:12px">chamados manuais</div></div>
+    <div><div class="statbig">94%</div><div class="muted" style="font-size:12px">satisfação (CSAT)</div></div>
+   </div>
+   <h4 class="mt16 mb12">Horas economizadas (mês a mês)</h4><canvas id="cAg" height="90"></canvas>
+  </div>
+ </div>`;
+ setTimeout(()=>{Chart.defaults.color='rgba(248,249,250,.6)';new Chart(document.getElementById('cAg'),{type:'bar',data:{labels:['Jan','Fev','Mar','Abr','Mai','Jun'],datasets:[{data:[280,310,355,390,410,428],backgroundColor:'#00D9C0',borderRadius:6}]},options:co({y:{display:false}})})},40);
+}
+function agStat(v,l,i){return `<div class="card metric"><div class="ic" style="background:var(--g2);color:#2a0a18"><i class="ti ${i}"></i></div><div class="v">${v}</div><div class="l">${l}</div></div>`}
+
+function renderSysUsers(v){
+ v.innerHTML=ph('Usuários do sistema',STATE.users.length+' usuários do painel',`<button class="btn btn-grad btn-sm" onclick="openNewUser()"><i class="ti ti-plus"></i> Novo usuário</button>`)+
+ `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Setor</th><th>Status</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>
+ ${STATE.users.map(u=>`<tr><td><div class="flex center ic-gap"><div class="cav" style="width:30px;height:30px;font-size:11px;background:${PROFILES[u.profile].color}">${initials(u.nome)}</div>${u.nome}</div></td>
+  <td class="muted">${u.email}</td><td><span class="badge b-blue">${PROFILES[u.profile].name}</span></td><td>${u.sector}</td>
+  <td><span class="badge ${u.status==='ativo'?'b-green':u.status==='bloqueado'?'b-red':'b-grey'}">${u.status}</span></td>
+  <td class="mono" style="font-size:11px">${u.last||'—'}</td>
+  <td class="actions-cell"><button class="iconbtn" title="Editar" onclick="openEditUser(${u.id})"><i class="ti ti-edit"></i></button><button class="iconbtn" title="Redefinir senha" onclick="toast('Senha redefinida para '+'${u.nome}'+' (simulado)')"><i class="ti ti-key"></i></button><button class="iconbtn" title="Auditoria" onclick="navigate('accesslogs')"><i class="ti ti-history"></i></button></td></tr>`).join('')}
+ </tbody></table></div>`;
+}
+function openNewUser(){modal(`<div class="modal"><div class="mh"><h3>Novo usuário do sistema</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ <div class="field"><label>Nome completo</label><input class="inp" placeholder="Nome"></div>
+ <div class="field"><label>E-mail (@araraquara.sp.gov.br)</label><input class="inp" placeholder="usuario@araraquara.sp.gov.br"></div>
+ <div class="grid g2"><div class="field"><label>Perfil</label><select class="inp">${Object.keys(PROFILES).map(p=>`<option>${PROFILES[p].name}</option>`).join('')}</select></div>
+ <div class="field"><label>Setor</label><select class="inp">${SECTORS.map(s=>`<option>${s.nome}</option>`).join('')}</select></div></div>
+ <div class="field"><label>Acesso</label><select class="inp"><option>Convidar por e-mail</option><option>Definir senha provisória</option></select></div>
+ <label class="check mt8"><input type="checkbox" checked> Forçar troca de senha no primeiro acesso</label>
+ <div class="btnrow"><button class="btn btn-grad" onclick="toast('Usuário criado (simulado)');logOp('criou usuário do sistema','novo cadastro');closeModal()">Criar usuário</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+function openEditUser(id){const u=STATE.users.find(x=>x.id===id);modal(`<div class="modal"><div class="mh"><div><h3>${u.nome}</h3><div class="msub">${u.email}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ <div class="tabs"><button class="on" onclick="tabSwitch(this,'eu1')">Dados</button><button onclick="tabSwitch(this,'eu2')">Permissões granulares</button><button onclick="tabSwitch(this,'eu3')">Histórico</button></div>
+ <div id="eu1"><div class="field"><label>Perfil</label><select class="inp">${Object.keys(PROFILES).map(p=>`<option ${p===u.profile?'selected':''}>${PROFILES[p].name}</option>`).join('')}</select></div><div class="field"><label>Status</label><select class="inp"><option>ativo</option><option>inativo</option><option>bloqueado</option></select></div></div>
+ <div id="eu2" class="hidden"><p class="muted mb12" style="font-size:12px">Sobrepõe o perfil para este usuário.</p><div class="permgrid">${ALLPERMS.slice(0,8).map(p=>`<label class="permrow"><span class="sw ${PROFILES[u.profile].perms.includes(p)?'on':''}" onclick="this.classList.toggle('on')"></span>${permLabel(p)}</label>`).join('')}</div></div>
+ <div id="eu3" class="hidden"><div class="tl">${STATE.accessLogs.filter(l=>l.email===u.email).slice(0,5).map(l=>`<div class="tlitem"><div class="tdot" style="background:${l.res==='Falha'?'var(--err)':'var(--p)'}"><i class="ti ti-login"></i></div><div class="tx">${l.act} — ${l.res}</div><div class="tm mono">${fmtDate(l.d)}</div></div>`).join('')||'<div class="muted">Sem registros</div>'}</div></div>
+ <div class="btnrow"><button class="btn btn-grad" onclick="toast('Alterações salvas (simulado)');closeModal()">Salvar</button><button class="btn btn-line" onclick="closeModal()">Fechar</button></div></div>`)}
+function permLabel(p){return PERMS.flatMap(g=>g.items).find(i=>i[0]===p)?.[1]||p}
+function tabSwitch(btn,id){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
+ btn.closest('.modal,.view,.card').querySelectorAll('[id^="'+id.slice(0,2)+'"]').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden')}
+
+function renderProfiles(v){
+ v.innerHTML=ph('Perfis e permissões','5 perfis configurados',`<button class="btn btn-grad btn-sm" onclick="toast('Criação de perfil customizado (simulado)')"><i class="ti ti-plus"></i> Novo perfil</button>`)+
+ `<div class="grid g2">${Object.entries(PROFILES).map(([k,p])=>`<div class="card"><div class="flex center" style="justify-content:space-between"><div><h4 style="color:${p.color}">${p.name}</h4><p class="muted" style="font-size:12.5px">${p.desc}</p></div><span class="badge b-grey">${STATE.users.filter(u=>u.profile===k).length} usuários</span></div>
+  <div class="mt16 flex wrap" style="gap:5px">${p.perms.slice(0,6).map(pr=>`<span class="chip">${permLabel(pr)}</span>`).join('')}${p.perms.length>6?`<span class="chip">+${p.perms.length-6}</span>`:''}</div>
+  <button class="btn btn-line btn-sm mt16" onclick="openPermEdit('${k}')"><i class="ti ti-adjustments"></i> Editar permissões</button></div>`).join('')}</div>`;
+}
+function openPermEdit(k){const p=PROFILES[k];modal(`<div class="modal wide"><div class="mh"><div><h3>${p.name}</h3><div class="msub">${p.desc}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ ${PERMS.map(g=>`<div class="grp" style="margin:14px 0 8px">${g.g}</div><div class="permgrid">${g.items.map(it=>`<label class="permrow"><span class="sw ${p.perms.includes(it[0])?'on':''}" onclick="this.classList.toggle('on')"></span>${it[1]}</label>`).join('')}</div>`).join('')}
+ <div class="btnrow"><button class="btn btn-grad" onclick="toast('Permissões do perfil ${p.name} salvas (simulado)');logOp('editou permissões do perfil','${p.name}');closeModal()">Salvar</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+
+function renderSectors(v){
+ v.innerHTML=ph('Setores',SECTORS.length+' setores da prefeitura',`<button class="btn btn-grad btn-sm" onclick="toast('Novo setor (simulado)')"><i class="ti ti-plus"></i> Novo setor</button>`)+
+ `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Setor</th><th>Sigla</th><th>Responsável</th><th>OU no AD</th><th>Categoria padrão</th><th>Ações</th></tr></thead><tbody>
+ ${SECTORS.map(s=>`<tr><td>${s.nome}</td><td><span class="badge b-grey">${s.sigla}</span></td><td>${s.resp}</td><td class="mono" style="font-size:12px">${s.ou}</td><td>${s.cat}</td><td class="actions-cell"><button class="iconbtn" onclick="toast('Editar ${s.sigla} (simulado)')"><i class="ti ti-edit"></i></button></td></tr>`).join('')}
+ </tbody></table></div>`;
+}
+
+function renderConfig(v){
+ v.innerHTML=ph('Configurações','Parâmetros do sistema')+
+ `<div class="card"><div class="tabs"><button class="on" onclick="tabSwitch(this,'cf1')">Geral</button><button onclick="tabSwitch(this,'cf2')">Integrações</button><button onclick="tabSwitch(this,'cf3')">Notificações</button><button onclick="tabSwitch(this,'cf4')">Segurança</button><button onclick="tabSwitch(this,'cf5')">Backup</button></div>
+ <div id="cf1"><div class="grid g2"><div class="field"><label>Nome do sistema</label><input class="inp" value="Central de Operações GLPI"></div><div class="field"><label>Fuso horário</label><input class="inp" value="America/Sao_Paulo (GMT-3)"></div><div class="field"><label>Formato de data</label><select class="inp"><option>dd/mm/aaaa</option><option>aaaa-mm-dd</option></select></div></div></div>
+ <div id="cf2" class="hidden">${[['GLPI','suporte.araraquara.sp.gov.br','ok'],['Chatwoot','chat.araraquara.sp.gov.br','ok'],['SMARAPD (RH)','sistemarh.araraquara.sp.gov.br','ok'],['Active Directory','pma.local','ok']].map(i=>`<div class="flex center" style="justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--brd)"><div><b>${i[0]}</b><div class="muted mono" style="font-size:12px">${i[1]}</div></div><div class="flex ic-gap center"><span class="badge b-green"><span class="dot" style="width:7px;height:7px"></span> online</span><button class="btn btn-line btn-sm" onclick="toast('Testando ${i[0]}... conexão OK')">Testar conexão</button></div></div>`).join('')}</div>
+ <div id="cf3" class="hidden"><p class="muted mb12">Gatilhos de notificação por perfil.</p>${['Chamado violou SLA','Desligamento detectado (RH)','Chamado aguardando aprovação','Execução AD concluída'].map(n=>`<div class="permrow mb12" style="justify-content:space-between"><span>${n}</span><div class="flex ic-gap"><span class="chip active">E-mail</span><span class="chip">Push</span><span class="chip">WhatsApp</span></div></div>`).join('')}</div>
+ <div id="cf4" class="hidden"><div class="grid g2"><div class="field"><label>Mínimo de caracteres da senha</label><input class="inp" value="12"></div><div class="field"><label>Expiração da senha (dias)</label><input class="inp" value="90"></div><div class="field"><label>Timeout de sessão (min)</label><input class="inp" value="30"></div><div class="field"><label>Tentativas antes do bloqueio</label><input class="inp" value="3"></div></div><label class="check mt8"><input type="checkbox" checked> Exigir 2FA para Admin e Coordenador</label><div class="field mt16"><label>IPs permitidos (allowlist)</label><input class="inp" value="10.10.0.0/16"></div></div>
+ <div id="cf5" class="hidden"><div class="grid g2"><div class="field"><label>Frequência</label><select class="inp"><option>Diário</option><option>A cada 12h</option></select></div><div class="field"><label>Retenção (dias)</label><input class="inp" value="30"></div></div><div class="kv"><span class="k">Último backup</span><span class="mono">01/06/2026 03:00</span></div><button class="btn btn-grad mt16" onclick="toast('Backup iniciado (simulado)')"><i class="ti ti-database-export"></i> Backup agora</button></div>
+ <div class="btnrow"><button class="btn btn-grad" onclick="toast('Configurações salvas (simulado)');logOp('alterou configurações do sistema','—')">Salvar alterações</button></div></div>`;
+}
+
+function renderAccessLogs(v){
+ v.innerHTML=ph('Logs de acesso',STATE.accessLogs.length+' registros',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Exportar CSV</button>`)+
+ `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar usuário/IP..." oninput="filterTbl('altbl',this.value)"></div><select class="inp" style="width:auto" onchange="filterRes('altbl',this.value)"><option value="">Todos resultados</option><option>Sucesso</option><option>Falha</option></select></div>
+ <div class="tbl-wrap card" style="padding:0"><table id="altbl"><thead><tr><th>Data/hora</th><th>Usuário</th><th>IP</th><th>Local</th><th>Dispositivo</th><th>Ação</th><th>Resultado</th></tr></thead><tbody>
+ ${STATE.accessLogs.map(l=>`<tr data-s="${(l.user+l.ip).toLowerCase()}" data-res="${l.res}"><td class="mono" style="font-size:11px">${fmtDate(l.d)}</td><td>${l.user}</td><td class="mono">${l.ip}</td><td>${l.loc}</td><td class="muted" style="font-size:12px">${l.dev}</td><td>${l.act}</td><td><span class="badge ${l.res==='Falha'?'b-red':'b-green'}">${l.res}</span></td></tr>`).join('')}
+ </tbody></table></div>`;
+}
+function renderOpLogs(v){
+ v.innerHTML=ph('Logs de operação',STATE.operationLogs.length+' registros imutáveis',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'Exportado JSON\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Exportar</button>`)+
+ `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar ação/usuário..." oninput="filterTbl('optbl',this.value)"></div></div>
+ <div class="tbl-wrap card" style="padding:0"><table id="optbl"><thead><tr><th>Data/hora</th><th>Usuário</th><th>Perfil</th><th>Ação</th><th>Antes → Depois</th><th>IP</th></tr></thead><tbody>
+ ${STATE.operationLogs.map(l=>`<tr data-s="${(l.user+l.acao).toLowerCase()}"><td class="mono" style="font-size:11px">${fmtDate(l.d)}</td><td>${l.user}</td><td><span class="badge b-blue">${l.profile}</span></td><td>${l.acao}</td><td class="muted">${l.delta}</td><td class="mono">${l.ip}</td></tr>`).join('')}
+ </tbody></table></div>`;
+}
+function filterTbl(id,q){q=q.toLowerCase();document.querySelectorAll('#'+id+' tbody tr').forEach(r=>r.style.display=(!q||r.dataset.s.includes(q))?'':'none')}
+function filterRes(id,r){document.querySelectorAll('#'+id+' tbody tr').forEach(x=>x.style.display=(!r||x.dataset.res===r)?'':'none')}
+
+function renderReports(v){
+ const reps=[['SLA mensal — Maio/2026','PDF','01/06 03:10'],['Volume de chamados — Maio','Excel','01/06 03:10'],['Operações do Agente IA — Maio','PDF','31/05 22:00'],['Auditoria de acessos — Q2','CSV','28/05 09:00'],['Relatório LGPD — tratamento de dados','PDF','25/05 14:30']];
+ v.innerHTML=ph('Relatórios','Geração e agendamento de relatórios',`<button class="btn btn-grad btn-sm" onclick="openNewReport()"><i class="ti ti-plus"></i> Novo relatório</button>`)+
+ `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Relatório</th><th>Formato</th><th>Gerado em</th><th>Ações</th></tr></thead><tbody>
+ ${reps.map(r=>`<tr><td>${r[0]}</td><td><span class="badge b-grey">${r[1]}</span></td><td class="mono" style="font-size:11px">${r[2]}</td><td class="actions-cell"><button class="iconbtn" onclick="toast('Download iniciado (simulado)')"><i class="ti ti-download"></i></button><button class="iconbtn" onclick="toast('Prévia (simulado)')"><i class="ti ti-eye"></i></button></td></tr>`).join('')}
+ </tbody></table></div>`;
+}
+function openNewReport(){modal(`<div class="modal"><div class="mh"><h3>Novo relatório</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ <div class="field"><label>Tipo</label><select class="inp"><option>SLA mensal</option><option>Volume de chamados</option><option>Operações do Agente IA</option><option>Auditoria de acessos</option><option>Relatório LGPD</option></select></div>
+ <div class="grid g2"><div class="field"><label>Período</label><select class="inp"><option>Últimos 30 dias</option><option>Mês atual</option><option>Trimestre</option></select></div><div class="field"><label>Formato</label><select class="inp"><option>PDF</option><option>Excel</option><option>CSV</option></select></div></div>
+ <label class="check mt8"><input type="checkbox"> Agendar geração recorrente (mensal)</label>
+ <div class="btnrow"><button class="btn btn-grad" onclick="toast('Relatório em geração (simulado)');closeModal()">Gerar</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+function openExport(){modal(`<div class="modal"><div class="mh"><h3>Prévia de exportação</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="card" style="text-align:center;padding:40px"><i class="ti ti-file-type-pdf" style="font-size:54px;color:var(--err)"></i><div class="mt8">Relatório SLA mensal · Junho/2026</div><div class="muted" style="font-size:12px">5 páginas · gráficos incluídos</div></div><div class="btnrow"><button class="btn btn-grad" onclick="toast('PDF baixado (simulado)');closeModal()"><i class="ti ti-download"></i> Baixar PDF</button></div></div>`)}
+
+function renderMyProfile(v){
+ const u=STATE.currentUser;
+ v.innerHTML=ph('Meu perfil','Suas informações e segurança')+
+ `<div class="grid g2"><div class="card"><div class="flex center ic-gap mb12"><div class="cav" style="width:64px;height:64px;font-size:22px;background:${PROFILES[u.profile].color}">${initials(u.nome)}</div><div><h3>${u.nome}</h3><span class="badge b-blue">${PROFILES[u.profile].name}</span></div></div>
+  <button class="btn btn-line btn-sm" onclick="toast('Upload de foto (simulado)')"><i class="ti ti-upload"></i> Trocar foto</button>
+  <div class="mt16"><div class="kv"><span class="k">E-mail</span><span>${u.email}</span></div><div class="kv"><span class="k">Telefone</span><span>${u.tel||'—'}</span></div><div class="kv"><span class="k">Setor</span><span>${u.sector}</span></div></div>
+  <div class="btnrow"><button class="btn btn-line btn-sm" onclick="openChangePass()"><i class="ti ti-key"></i> Trocar senha</button><button class="btn btn-line btn-sm" onclick="toast('Configurar 2FA — QR code (simulado)')"><i class="ti ti-qrcode"></i> Configurar 2FA</button></div></div>
+  <div class="card"><h4 class="mb12">Sessões ativas</h4>
+   ${[['Chrome 124 / Windows','10.10.2.14 · Araraquara','agora'],['Aplicativo móvel / Android','10.10.5.7 · Araraquara','2h'],['Edge / Windows','10.10.2.3 · Araraquara','ontem']].map((s,i)=>`<div class="flex center" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--brd)"><div><div style="font-size:13px">${s[0]} ${i==0?'<span class="badge b-green">atual</span>':''}</div><div class="muted mono" style="font-size:11px">${s[1]} · ${s[2]}</div></div>${i>0?`<button class="btn btn-line btn-sm" onclick="this.closest('div').parentNode.remove?0:0;toast('Sessão encerrada')">Encerrar</button>`:''}</div>`).join('')}
+   <h4 class="mt16 mb12">Minhas notificações</h4>${['SLA em risco','Chamados do meu setor','Desligamentos (RH)'].map(n=>`<label class="permrow mb12"><span class="sw on" onclick="this.classList.toggle('on')"></span>${n}</label>`).join('')}</div></div>`;
+}
+
+/* ===================== MODALS ===================== */
+function modal(html){document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()">${html.includes('side-modal')?html:html}</div>`}
+function closeModal(){document.getElementById('modalRoot').innerHTML=''}
+function openForgot(){modal(`<div class="modal"><div class="mh"><h3>Esqueci minha senha</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div><p class="muted mb12">Informe seu e-mail institucional para receber o link de redefinição.</p><div class="field"><input class="inp" placeholder="usuario@araraquara.sp.gov.br"></div><div class="btnrow"><button class="btn btn-grad" onclick="closeModal();toast('Se o e-mail estiver cadastrado, enviamos as instruções.')">Enviar link de redefinição</button></div></div>`)}
+function openChangePass(){modal(`<div class="modal"><div class="mh"><div><h3>${STATE.currentUser?.primeiro_acesso?'Primeiro acesso — defina uma nova senha':'Trocar senha'}</h3><div class="msub">Mínimo 12 caracteres, com maiúscula, número e símbolo</div></div>${STATE.currentUser?.primeiro_acesso?'':'<button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button>'}</div>
+ ${STATE.currentUser?.primeiro_acesso?'':'<div class="field"><label>Senha atual</label><input class="inp" type="password"></div>'}
+ <div class="field"><label>Nova senha</label><input class="inp" type="password" id="npw" oninput="pwStrength(this.value)"></div>
+ <div class="pwbar"><i id="pwfill" style="width:0%;background:var(--err)"></i></div><div class="muted mt8" id="pwtxt" style="font-size:12px">Força: —</div>
+ <div class="field mt16"><label>Confirmar nova senha</label><input class="inp" type="password"></div>
+ <div class="btnrow"><button class="btn btn-grad" onclick="if(STATE.currentUser)STATE.currentUser.primeiro_acesso=false;toast('Senha alterada com sucesso');closeModal()">Salvar nova senha</button></div></div>`)}
+function pwStrength(v){let s=0;if(v.length>=12)s++;if(/[A-Z]/.test(v))s++;if(/[0-9]/.test(v))s++;if(/[^A-Za-z0-9]/.test(v))s++;
+ const f=document.getElementById('pwfill'),t=document.getElementById('pwtxt');const map=[['0%','var(--err)','—'],['33%','var(--err)','Fraca'],['66%','var(--warn)','Média'],['85%','var(--warn)','Boa'],['100%','var(--ok)','Forte']];
+ const m=map[s];f.style.width=m[0];f.style.background=m[1];t.textContent='Força: '+m[2]}
+
+/* ===================== UTIL ===================== */
+function toast(msg){const w=document.getElementById('toasts');const el=document.createElement('div');el.className='toast';el.innerHTML=`<i class="ti ti-circle-check"></i><span>${msg}</span>`;w.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transition='.4s';setTimeout(()=>el.remove(),400)},3200)}
+function logOp(acao,delta){STATE.operationLogs.unshift({d:new Date(),user:STATE.currentUser.nome,profile:PROFILES[STATE.currentUser.profile].name,acao,delta,ip:'10.10.2.14'})}
+function startClock(){const c=document.getElementById('clock');const t=new Date(NOW);setInterval(()=>{t.setSeconds(t.getSeconds()+1);c.textContent=fmtDate(t).split(' ')[1]+':'+pad(t.getSeconds())},1000);c.textContent=fmtDate(t).split(' ')[1]+':00'}
+
+document.getElementById('lgPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+</script>
+</body>
+</html>

@@ -1,0 +1,310 @@
+{
+  "name": "17_GLPI_Limpar_Historico",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🧹 Limpar Histórico de Conversas\nApaga TODOS os registros da tabela n8n_historico_mensagens.\nExecute manualmente ou agende conforme necessidade.\n\n⚠️ Ação irreversível — todos os usuários perdem o histórico.",
+        "height": 300,
+        "width": 700,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        100
+      ],
+      "id": "clean-note-01",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        500
+      ],
+      "id": "clean-0001",
+      "name": "Executar Manual"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        700
+      ],
+      "id": "clean-0002",
+      "name": "Agendar Semanal",
+      "notes": "⚠️ Todo Domingo às 03:00. Desative se não quiser automático.",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS total_registros FROM n8n_historico_mensagens;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        520,
+        600
+      ],
+      "id": "clean-0003",
+      "name": "Contar Registros Antes",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-check-1",
+              "leftValue": "={{ Number($json.total_registros) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        740,
+        600
+      ],
+      "id": "clean-0004",
+      "name": "Tem Registros?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "TRUNCATE TABLE n8n_historico_mensagens;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        960,
+        500
+      ],
+      "id": "clean-0005",
+      "name": "Limpar Historico",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS registros_restantes FROM n8n_historico_mensagens;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1180,
+        500
+      ],
+      "id": "clean-0006",
+      "name": "Verificar Limpeza",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "res-1",
+              "name": "status",
+              "type": "string",
+              "value": "sucesso"
+            },
+            {
+              "id": "res-2",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=Histórico limpo com sucesso. {{ $('Contar Registros Antes').item.json.total_registros }} registros removidos. Restam: {{ $json.registros_restantes }}."
+            },
+            {
+              "id": "res-3",
+              "name": "registros_removidos",
+              "type": "number",
+              "value": "={{ Number($('Contar Registros Antes').item.json.total_registros) }}"
+            },
+            {
+              "id": "res-4",
+              "name": "executado_em",
+              "type": "string",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1400,
+        500
+      ],
+      "id": "clean-0007",
+      "name": "Resultado Sucesso"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "res-empty-1",
+              "name": "status",
+              "type": "string",
+              "value": "vazio"
+            },
+            {
+              "id": "res-empty-2",
+              "name": "mensagem",
+              "type": "string",
+              "value": "Nenhum registro encontrado. A tabela já está vazia."
+            },
+            {
+              "id": "res-empty-3",
+              "name": "executado_em",
+              "type": "string",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        780
+      ],
+      "id": "clean-0008",
+      "name": "Resultado Vazio"
+    }
+  ],
+  "connections": {
+    "Executar Manual": {
+      "main": [
+        [
+          {
+            "node": "Contar Registros Antes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agendar Semanal": {
+      "main": [
+        [
+          {
+            "node": "Contar Registros Antes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contar Registros Antes": {
+      "main": [
+        [
+          {
+            "node": "Tem Registros?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Registros?": {
+      "main": [
+        [
+          {
+            "node": "Limpar Historico",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resultado Vazio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpar Historico": {
+      "main": [
+        [
+          {
+            "node": "Verificar Limpeza",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Limpeza": {
+      "main": [
+        [
+          {
+            "node": "Resultado Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "tags": []
+}

@@ -1,0 +1,390 @@
+{
+  "name": "02_GLPI_Auth",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": []
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "node-0001",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT access_token FROM glpi_n8n.glpi_token_cache\n       WHERE id=1 AND expires_at > NOW() AND access_token != '';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        460,
+        300
+      ],
+      "id": "node-0002",
+      "name": "Verificar Cache Token",
+      "credentials": {
+        "postgres": {
+          "id": "Prefeitura_PG",
+          "name": "Prefeitura_PG"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "node-0011",
+              "leftValue": "={{ $json.access_token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        300
+      ],
+      "id": "node-0003",
+      "name": "Token Válido?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0012",
+              "name": "access_token",
+              "type": "string",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "id": "node-0013",
+              "name": "from_cache",
+              "type": "boolean",
+              "value": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        200
+      ],
+      "id": "node-0004",
+      "name": "Retornar Token Cache"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT client_id, client_secret, glpi_username, glpi_password, base_url, app_token_v2\n       FROM glpi_n8n.glpi_token_cache WHERE id=1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        420
+      ],
+      "id": "node-0005",
+      "name": "Buscar Credenciais",
+      "credentials": {
+        "postgres": {
+          "id": "Prefeitura_PG",
+          "name": "Prefeitura_PG"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/token",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            },
+            {
+              "name": "App-Token",
+              "value": "={{ ($json.app_token_v2 || '').replace(/\\s+/g, '') }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "password"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ ($json.client_id || '').replace(/\\s+/g, '') }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ ($json.client_secret || '').replace(/\\s+/g, '') }}"
+            },
+            {
+              "name": "username",
+              "value": "={{ ($json.glpi_username || '').replace(/[\\r\\n]+/g, '') }}"
+            },
+            {
+              "name": "password",
+              "value": "={{ ($json.glpi_password || '').replace(/[\\r\\n]+/g, '') }}"
+            },
+            {
+              "name": "scope",
+              "value": "api"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        420
+      ],
+      "id": "node-0006",
+      "name": "OAuth2 Token"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "node-0014",
+              "leftValue": "={{ $json.access_token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        420
+      ],
+      "id": "node-0007",
+      "name": "Token OK?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE glpi_n8n.glpi_token_cache\n       SET access_token='{{ $json.access_token }}',\n           obtained_at=NOW(),\n           expires_at=NOW() + INTERVAL '55 minutes'\n       WHERE id=1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1560,
+        320
+      ],
+      "id": "node-0008",
+      "name": "Salvar Token no Cache",
+      "credentials": {
+        "postgres": {
+          "id": "Prefeitura_PG",
+          "name": "Prefeitura_PG"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0015",
+              "name": "access_token",
+              "type": "string",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "id": "node-0016",
+              "name": "expires_in",
+              "type": "number",
+              "value": "={{ $json.expires_in }}"
+            },
+            {
+              "id": "node-0017",
+              "name": "from_cache",
+              "type": "boolean",
+              "value": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1780,
+        320
+      ],
+      "id": "node-0009",
+      "name": "Retornar Novo Token"
+    },
+    {
+      "parameters": {
+        "errorMessage": "❌ Falha no OAuth2 GLPI. Verifique client_id, client_secret, username e password na tabela glpi_token_cache."
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        540
+      ],
+      "id": "node-0010",
+      "name": "Erro Autenticação GLPI"
+    }
+  ],
+  "connections": {
+    "node-0001": {
+      "main": [
+        [
+          {
+            "node": "node-0002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-0002": {
+      "main": [
+        [
+          {
+            "node": "node-0003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-0003": {
+      "main": [
+        [
+          {
+            "node": "node-0004",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "node-0005",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-0005": {
+      "main": [
+        [
+          {
+            "node": "node-0006",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-0006": {
+      "main": [
+        [
+          {
+            "node": "node-0007",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-0007": {
+      "main": [
+        [
+          {
+            "node": "node-0008",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "node-0010",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "node-0008": {
+      "main": [
+        [
+          {
+            "node": "node-0009",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

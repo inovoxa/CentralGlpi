@@ -1,0 +1,278 @@
+{
+  "name": "12_GLPI_Atualizar_Chamado",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "ticket_id",
+              "type": "number"
+            },
+            {
+              "name": "acao"
+            },
+            {
+              "name": "mensagem"
+            },
+            {
+              "name": "novo_status",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -816,
+        656
+      ],
+      "id": "9f25095b-b577-41a5-a7cd-76c0b49f4bd6",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7WhIDdlVLWRtNCo0",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7WhIDdlVLWRtNCo0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        -608,
+        656
+      ],
+      "id": "bfae1d54-c750-453f-877c-5a36e0d445b7",
+      "name": "Chamar Auth"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Trigger\").item.json.acao }}",
+                    "rightValue": "followup",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Follow-up"
+            },
+            {
+              "conditions": {
+                "options": {},
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Trigger\").item.json.acao }}",
+                    "rightValue": "status",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Status"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -384,
+        656
+      ],
+      "id": "1b439224-b265-4a71-94bb-b5f319015248",
+      "name": "Ação?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $(\"Trigger\").item.json.ticket_id }}/Timeline/Followup",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({content: $('Trigger').item.json.mensagem, is_private: false}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        528
+      ],
+      "id": "653e8889-8691-4833-bcaf-f873328200b9",
+      "name": "Adicionar Follow-up"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/{{ $(\"Trigger\").item.json.ticket_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({status: {id: $('Trigger').item.json.novo_status}}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        768
+      ],
+      "id": "6664dfb6-6b66-4360-b795-65212a2ae768",
+      "name": "Atualizar Status"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0007",
+              "name": "sucesso",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "node-0008",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=✅ Chamado #{{ $(\"Trigger\").item.json.ticket_id }} atualizado!"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        624
+      ],
+      "id": "f6a0123c-52a1-4cc1-97c9-d6336f98a7f5",
+      "name": "Retornar Confirmação"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Adicionar Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Retornar Confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Status": {
+      "main": [
+        [
+          {
+            "node": "Retornar Confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ação?": {
+      "main": [
+        [
+          {
+            "node": "Adicionar Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Atualizar Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Auth": {
+      "main": [
+        [
+          {
+            "node": "Ação?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chamar Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "ad748f98-36b6-4168-bf90-8e01bee6d864",
+  "meta": {
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "WEu14CVJnS5jE9Zd",
+  "tags": []
+}

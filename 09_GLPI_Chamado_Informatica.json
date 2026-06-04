@@ -1,0 +1,337 @@
+{
+  "name": "09_GLPI_Chamado_Informatica",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "conversa_id"
+            },
+            {
+              "name": "subtipo"
+            },
+            {
+              "name": "nome_solicitante"
+            },
+            {
+              "name": "local"
+            },
+            {
+              "name": "cep"
+            },
+            {
+              "name": "logradouro"
+            },
+            {
+              "name": "numero"
+            },
+            {
+              "name": "complemento"
+            },
+            {
+              "name": "bairro"
+            },
+            {
+              "name": "cidade"
+            },
+            {
+              "name": "uf"
+            },
+            {
+              "name": "telefone"
+            },
+            {
+              "name": "email_unidade"
+            },
+            {
+              "name": "setor"
+            },
+            {
+              "name": "patrimonio"
+            },
+            {
+              "name": "serie"
+            },
+            {
+              "name": "nome_maquina"
+            },
+            {
+              "name": "ip"
+            },
+            {
+              "name": "prioridade"
+            },
+            {
+              "name": "referente_impressora"
+            },
+            {
+              "name": "tipo_servico"
+            },
+            {
+              "name": "impressora"
+            },
+            {
+              "name": "descricao_solicitacao"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        4160,
+        2064
+      ],
+      "id": "664d8d97-e624-4065-a0d2-0c547b21f0a5",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "7WhIDdlVLWRtNCo0",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/7WhIDdlVLWRtNCo0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        4384,
+        2064
+      ],
+      "id": "1adc0994-f99a-4558-b75b-47e787466506",
+      "name": "Chamar Auth"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst safe = (s) => (s || '').replace(/'/g, \"''\");\nconst d = $('Trigger').item.json;\nconst subtipoMap = {\"2.1\":{\"label\":\"Manutenção de Impressoras\",\"catId\":23},\"2.2\":{\"label\":\"Manutenção de Computador\",\"catId\":24},\"2.3\":{\"label\":\"Instalação de Software\",\"catId\":25},\"2.4\":{\"label\":\"Atualização de Software\",\"catId\":26},\"2.5\":{\"label\":\"Reparação de Software\",\"catId\":27},\"2.6\":{\"label\":\"Internet Lenta / Instável\",\"catId\":28},\"2.7\":{\"label\":\"Sem Conexão com Internet\",\"catId\":29},\"2.8\":{\"label\":\"Acesso Wi-Fi\",\"catId\":30},\"2.9\":{\"label\":\"VPN / Acesso Remoto\",\"catId\":31},\"2.10\":{\"label\":\"Outros Assuntos de Rede\",\"catId\":32},\"2.11\":{\"label\":\"Cartucho / Toner\",\"catId\":33}};\nconst info = subtipoMap[d.subtipo] || { label:d.subtipo||'Informática', catId:12 };\nconst prioMap = {baixa:1,media:2,alta:3,muito_alta:4};\nconst prio = prioMap[d.prioridade] || 2;\nconst html = [\n  '<p><strong>CHAMADO SUPORTE INFORMÁTICA — ' + info.label.toUpperCase() + '</strong></p>',\n  '<p><strong>Solicitante:</strong> ' + (d.nome_solicitante||'') + '</p>',\n  '<p><strong>Local:</strong> ' + (d.local||'') + '</p>',\n  '<p><strong>Endereço:</strong> ' + (d.logradouro||'') + ', ' + (d.numero||'') + (d.complemento?' — '+d.complemento:'') + '</p>',\n  '<p><strong>Bairro:</strong> ' + (d.bairro||'') + ' | Cidade: ' + (d.cidade||'') + ' | UF: ' + (d.uf||'') + ' | CEP: ' + (d.cep||'') + '</p>',\n  '<p><strong>Telefone:</strong> ' + (d.telefone||'') + '</p>',\n  '<p><strong>E-mail Institucional:</strong> ' + (d.email_unidade||'') + '</p>',\n  '<p><strong>Setor:</strong> ' + (d.setor||'') + '</p>',\n  d.nome_maquina ? '<p><strong>Nome Máquina:</strong> ' + d.nome_maquina + '</p>' : '',\n  d.ip           ? '<p><strong>IP:</strong> '           + d.ip           + '</p>' : '',\n  d.patrimonio   ? '<p><strong>Patrimônio:</strong> '   + d.patrimonio   + '</p>' : '',\n  d.serie        ? '<p><strong>Série:</strong> '        + d.serie        + '</p>' : '',\n  d.referente_impressora === 'sim' ? '<p><strong>Impressora:</strong> ' + (d.impressora||'') + ' | Tipo: ' + (d.tipo_servico||'') + '</p>' : '',\n  '<p><strong>Descrição:</strong> ' + (d.descricao_solicitacao||'') + '</p>',\n].filter(Boolean).join('\\n');\nreturn [{json:{\n  html,\n  titulo:'Suporte TI [' + info.label + '] - ' + safe(d.local) + ' - ' + safe(d.setor),\n  itilcategories_id: info.catId,\n  prioridade: prio\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4608,
+        2064
+      ],
+      "id": "39036b6d-91bf-457d-b96e-1017e8ff781f",
+      "name": "Montar HTML Informática"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Chamar Auth').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({name: $('Montar HTML Informática').item.json.titulo, content: $('Montar HTML Informática').item.json.html, type: 1, status: 1, urgency: $('Montar HTML Informática').item.json.prioridade, impact: 2, priority: $('Montar HTML Informática').item.json.prioridade, category: $('Montar HTML Informática').item.json.itilcategories_id, request_type: 3}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4576,
+        2240
+      ],
+      "id": "d9e41ebe-47db-46a5-8a07-832040609bfc",
+      "name": "Criar Chamado GLPI"
+    },
+    {
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst userId = $(\"Buscar Usuario ID\").item.json.userId;\nconst userMobile = $(\"Buscar Usuario ID\").item.json.userMobile || \"\";\nconst ticketId = $(\"Criar Chamado GLPI\").item.json.id;\nif (!userId || !ticketId) return [$input.first()];\nconst token = $(\"Chamar Auth\").item.json.access_token;\nconst headers = { \"Authorization\": \"Bearer \" + token, \"Content-Type\": \"application/json\" };\n\n// 1) Adicionar requerente ao ticket\ntry {\n  await helpers.httpRequest({\n    method: \"POST\",\n    url: \"https://suporte.araraquara.sp.gov.br/api.php/v2/Assistance/Ticket/\" + ticketId + \"/TeamMember\",\n    headers,\n    body: { type: \"User\", id: userId, role: \"requester\" }\n  });\n} catch(e) { /* ignora */ }\n\n// 2) Atualizar celular do usuario SO se ele estiver vazio\nconst celularTrigger = $(\"Trigger\").item.json.celular || $(\"Trigger\").item.json.telefone || \"\";\nif (celularTrigger && !userMobile) {\n  try {\n    await helpers.httpRequest({\n      method: \"PATCH\",\n      url: \"https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User/\" + userId,\n      headers,\n      body: { mobile: celularTrigger }\n    });\n  } catch(e) { /* ignora */ }\n}\n\nreturn [$input.first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4832,
+        2064
+      ],
+      "id": "8ea0aa08-d13d-4f40-85fb-7bac8d33acaa",
+      "name": "Definir Requerente"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO glpi_n8n.chamados_log\n  (conversa_id, glpi_ticket_id, glpi_ticket_url, titulo, menu_numero, menu_descricao,\n   solicitante_nome, solicitante_email, solicitante_matricula, secretaria, coordenadoria,\n   glpi_category_id, prioridade, resposta_glpi)\nVALUES (\n  $1, $2,\n  'https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id=' || $2::text,\n  $3, $4, $5,\n  $6, $7, $8, $9, $10,\n  $11, 2, '{}'::jsonb\n) ON CONFLICT DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Trigger').item.json.conversa_id || '',\n  $('Criar Chamado GLPI').item.json.id,\n  $('Montar HTML Informática').item.json.titulo,\n  2,\n  'Suporte Informática',\n  $('Trigger').item.json.nome_completo || $('Trigger').item.json.nome_solicitante || '',\n  $('Trigger').item.json.email_pessoal || $('Trigger').item.json.email_unidade || '',\n  $('Trigger').item.json.matricula || '',\n  $('Trigger').item.json.secretaria || '',\n  $('Trigger').item.json.coordenadoria || '',\n  $('Criar Chamado GLPI').item.json.category || 0\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        5040,
+        2064
+      ],
+      "id": "4cceb4b6-6f38-40f7-8f75-ea9664c0fd0e",
+      "name": "Log no Banco",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "node-0007",
+              "name": "ticket_id",
+              "type": "number",
+              "value": "={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            },
+            {
+              "id": "node-0008",
+              "name": "ticket_url",
+              "type": "string",
+              "value": "=https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            },
+            {
+              "id": "node-0009",
+              "name": "sucesso",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "node-0010",
+              "name": "mensagem",
+              "type": "string",
+              "value": "=✅ Chamado aberto! Número: *{{ $(\"Criar Chamado GLPI\").item.json.id }}*\n🔗 https://suporte.araraquara.sp.gov.br/front/ticket.form.php?id={{ $(\"Criar Chamado GLPI\").item.json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5264,
+        2064
+      ],
+      "id": "76459c64-2434-48b8-97d6-0eec7f36cae3",
+      "name": "Retornar Resultado"
+    },
+    {
+      "position": [
+        4788,
+        2064
+      ],
+      "name": "Buscar Usuario ID",
+      "id": "buscar-usuario-56788",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const helpers = this.helpers;\nconst token = $(\"Chamar Auth\").item.json.access_token;\nconst d = $(\"Trigger\").item.json;\nconst email = d.email_pessoal || d.email_unidade || d.email_institucional || \"\";\nconst login = d.nome_usuario || d.login_usuario_reset || d.login_usuario_reativar || d.login_usuario_desativar || d.login_usuario_transferir || \"\";\nconst nome  = d.nome_completo || d.nome_solicitante || \"\";\n\nasync function searchUser(filter, requireUnique) {\n  try {\n    const r = await helpers.httpRequest({\n      method: \"GET\",\n      url: `https://suporte.araraquara.sp.gov.br/api.php/v2/Administration/User?filter=${encodeURIComponent(filter)}`,\n      headers: { \"Authorization\": \"Bearer \" + token }\n    });\n    const users = Array.isArray(r) ? r : (r?.data ? r.data : []);\n    if (users.length === 0) return null;\n    if (requireUnique && users.length > 1) return null;\n    return users[0];\n  } catch(e) { return null; }\n}\n\nlet user = null;\nif (email) user = await searchUser(`emails.email==${email}`, false);\nif (!user && login) user = await searchUser(`username==${login}`, false);\nif (!user && nome) {\n  const first = nome.trim().split(/\\s+/)[0];\n  if (first) user = await searchUser(`firstname==${first}`, true);\n}\n\nreturn [{ json: {\n  userId:     user?.id || 0,\n  userMobile: user?.mobile || \"\",\n  email, login, nome\n} }];"
+      },
+      "typeVersion": 2
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chamar Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Auth": {
+      "main": [
+        [
+          {
+            "node": "Montar HTML Informática",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar HTML Informática": {
+      "main": [
+        [
+          {
+            "node": "Buscar Usuario ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Chamado GLPI": {
+      "main": [
+        [
+          {
+            "node": "Definir Requerente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Definir Requerente": {
+      "main": [
+        [
+          {
+            "node": "Log no Banco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log no Banco": {
+      "main": [
+        [
+          {
+            "node": "Retornar Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Usuario ID": {
+      "main": [
+        [
+          {
+            "node": "Criar Chamado GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c76fddfc-0e21-44a6-a366-eaae5581d8a4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914e320367c516f18f53ed247d9d3c38a225e9acd7de7ca64a0fe393c4a73b6f"
+  },
+  "id": "kbtFLqKsHs2kDAlO",
+  "tags": []
+}

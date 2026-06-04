@@ -1,0 +1,12 @@
+# Teste local. Build a partir da RAIZ do repo (context: ..) para enxergar "sistema web/".
+# Uso: cd backend && docker compose up --build
+services:
+  central-glpi:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped

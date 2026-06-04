@@ -1,0 +1,175 @@
+{
+  "name": "21_GLPI_Purge_Formularios",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## WF 21 v3 - PURGE com Loop\n\n5 nodes:\n1. Listar forms alvo\n2. Loop SplitInBatches (batchSize=1)\n3. Deletar 1 form (execucao isolada por iteracao)\n4. Volta pro loop\n5. Resumo (quando termina)\n\nCada DELETE vira execucao separada do task runner = sem timeout total.",
+        "height": 320,
+        "width": 480,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        540
+      ],
+      "id": "note-21-001",
+      "name": "Documentacao"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "trg-21-001",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lista forms que devem ser deletados\nconst helpers = this.helpers;\nconst baseUrl = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\nconst I_FORM = 'Glpi%5CForm%5CForm';\n\nconst nomes = [\n  'Criacao de Usuario','Reset de Senha','Reativacao de Usuario','Desativacao de Usuario',\n  'Acesso a Pasta de Rede','Criacao de E-mail Institucional','Transferencia de Setor ou Local',\n  'Manutencao de Impressoras','Manutencao de Computador','Instalacao de Software',\n  'Atualizacao de Software','Reparacao de Software','Internet Lenta ou Instavel',\n  'Sem Conexao com a Internet','Acesso Wi-Fi','VPN / Acesso Remoto','Outros Assuntos de Rede',\n  'Cartucho ou Toner','Saude - Problemas de Acesso','Saude - Novo Acesso','Saude - Solicitacoes Gerais',\n  'Telefonia - Problemas com Ramal','Telefonia - Aparelho Telefonico','Telefonia - Celular e Chip',\n  'Telefonia - Outros'\n];\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst r0 = await callRaw('GET', `${baseUrl}/initSession`, {\n  'App-Token': appToken,\n  'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { erro: 'auth falhou' }}];\nconst sessionToken = r0.body.session_token;\nconst H = { 'App-Token': appToken, 'Session-Token': sessionToken };\n\nconst formsAlvo = [];\nfor (const isDel of [0, 1]) {\n  const r = await callRaw('GET', `${baseUrl}/${I_FORM}?is_deleted=${isDel}&range=0-200`, H);\n  const arr = Array.isArray(r.body) ? r.body : (r.body && r.body.data ? r.body.data : []);\n  for (const f of arr) {\n    if (!f || !f.id || !f.name) continue;\n    if (nomes.includes(f.name) || f.name.startsWith('ZTESTE-')) {\n      formsAlvo.push({ id: f.id, name: f.name, is_deleted: isDel });\n    }\n  }\n}\n\nawait callRaw('GET', `${baseUrl}/killSession`, H);\nreturn formsAlvo.map(f => ({ json: f }));\n"
+      },
+      "id": "code-21-001",
+      "name": "Listar Forms Alvo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-21-001",
+      "name": "Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deleta 1 form (1 item por execucao via SplitInBatches)\nconst helpers = this.helpers;\nconst baseUrl = 'https://suporte.araraquara.sp.gov.br/api.php/v1';\nconst appToken = $('Carregar Tokens').first().json.app_token;\nconst userToken = $('Carregar Tokens').first().json.user_token;\nconst I_FORM = 'Glpi%5CForm%5CForm';\n\nasync function callRaw(method, url, headers) {\n  const resp = await helpers.httpRequest({ method, url, headers, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  let parsed = resp.body;\n  if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch(_) {} }\n  return { status: resp.statusCode || resp.status, body: parsed };\n}\n\nconst f = $input.first().json;\n\nconst r0 = await callRaw('GET', `${baseUrl}/initSession`, {\n  'App-Token': appToken,\n  'Authorization': `user_token ${userToken}`\n});\nif (r0.status !== 200) return [{ json: { ...f, status: 'erro_auth' }}];\nconst sessionToken = r0.body.session_token;\nconst H = { 'App-Token': appToken, 'Session-Token': sessionToken };\n\nconst del = await callRaw('DELETE', `${baseUrl}/${I_FORM}/${f.id}?force_purge=1`, H);\nawait callRaw('GET', `${baseUrl}/killSession`, H);\n\nreturn [{ json: {\n  ...f,\n  status: del.status >= 400 ? `falha_${del.status}` : 'purgado',\n  delete_status: del.status\n}}];\n"
+      },
+      "id": "code-21-002",
+      "name": "Deletar Form",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resumo (executa apos o loop terminar)\nconst items = $input.all().map(i => i.json);\nconst purgados = items.filter(x => x.status === 'purgado').length;\nconst falhas = items.filter(x => x.status && x.status.startsWith('falha')).length;\nreturn [{ json: {\n  sucesso: falhas === 0,\n  total: items.length,\n  purgados,\n  falhas,\n  items\n}}];\n"
+      },
+      "id": "code-21-003",
+      "name": "Resumo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT user_token, app_token, base_url\nFROM glpi_n8n.glpi_token_cache\nWHERE id = 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        480
+      ],
+      "id": "7c8a19c0-8156-4ed1-bae6-b935cdc47a34",
+      "name": "Carregar Tokens",
+      "credentials": {
+        "postgres": {
+          "id": "n4vFFnEj3QjMommF",
+          "name": "GLPI PMA"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Carregar Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar Forms Alvo": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop": {
+      "main": [
+        [
+          {
+            "node": "Resumo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Deletar Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deletar Form": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carregar Tokens": {
+      "main": [
+        [
+          {
+            "node": "Listar Forms Alvo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
