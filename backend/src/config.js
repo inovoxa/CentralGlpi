@@ -67,6 +67,12 @@ export const config = {
     accountId: env.CHATWOOT_ACCOUNT_ID || '',
   },
 
+  // Fatores de ROI estimado da tela Agente IA (ajustáveis).
+  agente: {
+    minPorOp: int(env.AGENTE_MIN_POR_OP, 25),   // minutos poupados por operação automatizada
+    custoHora: int(env.AGENTE_CUSTO_HORA, 60),   // R$/hora de um técnico
+  },
+
   ad: {
     host: env.AD_SSH_HOST || '',
     port: int(env.AD_SSH_PORT, 22),

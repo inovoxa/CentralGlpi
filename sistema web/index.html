@@ -973,25 +973,38 @@ function bubble(m){
 function renderAgente(v){
  v.innerHTML=ph('Agente IA','Desempenho da automação conversacional',`<button class="btn btn-line btn-sm" onclick="toast('Relatório mensal gerado (simulado)')"><i class="ti ti-report"></i> Gerar relatório mensal</button>`)+
  `<div class="grid g4">
-   ${agStat('1.847','conversas no mês','ti-messages')}${agStat('83%','resolvidas sem humano','ti-robot')}${agStat('3m42s','tempo médio','ti-clock')}${agStat('312','execuções AD','ti-bolt')}
+   ${agStat('agConversas','conversas com chamado (mês)','ti-messages')}${agStat('agSemHumano','resolvidas sem humano','ti-robot')}${agStat('agTempo','tempo médio de execução','ti-clock')}${agStat('agExec','execuções AD (mês)','ti-bolt')}
  </div>
  <div class="grid g2 mt16">
-  <div class="card"><h4 class="mb12">Operações por tipo</h4>
-   ${[['Criação de usuário',92],['Reset de senha',184],['Reativação',31],['Desativação',47],['Transferência',22],['Criação de e-mail',38],['Acesso a pasta',54]].map(o=>`<div class="mb12"><div class="flex" style="justify-content:space-between;font-size:13px"><span>${o[0]}</span><span class="mono muted">${o[1]}</span></div><div class="barh mt8"><i style="width:${Math.min(100,o[1]/2)}%"></i></div></div>`).join('')}</div>
+  <div class="card"><h4 class="mb12">Operações por tipo (6 meses)</h4><div id="agOps"><div class="muted">Carregando…</div></div></div>
   <div class="card" style="background:linear-gradient(135deg,rgba(0,217,192,.1),rgba(91,127,222,.08))">
-   <h4 class="mb12">Retorno (ROI)</h4>
+   <h4 class="mb12">Retorno (ROI) estimado</h4>
    <div class="grid g2">
-    <div><div class="statbig gradtext">428h</div><div class="muted" style="font-size:12px">horas economizadas / mês</div></div>
-    <div><div class="statbig gradtext">R$ 41,2k</div><div class="muted" style="font-size:12px">economia estimada / mês</div></div>
-    <div><div class="statbig">−67%</div><div class="muted" style="font-size:12px">chamados manuais</div></div>
-    <div><div class="statbig">94%</div><div class="muted" style="font-size:12px">satisfação (CSAT)</div></div>
+    <div><div class="statbig gradtext" id="agHoras">…</div><div class="muted" style="font-size:12px">horas economizadas / mês</div></div>
+    <div><div class="statbig gradtext" id="agEconomia">…</div><div class="muted" style="font-size:12px">economia estimada / mês</div></div>
+    <div><div class="statbig" id="agManual">…</div><div class="muted" style="font-size:12px">resolvido pela IA</div></div>
+    <div><div class="statbig" id="agOpsMes">…</div><div class="muted" style="font-size:12px">operações no mês</div></div>
    </div>
    <h4 class="mt16 mb12">Horas economizadas (mês a mês)</h4><canvas id="cAg" height="90"></canvas>
   </div>
  </div>`;
- setTimeout(()=>{Chart.defaults.color='rgba(248,249,250,.6)';new Chart(document.getElementById('cAg'),{type:'bar',data:{labels:['Jan','Fev','Mar','Abr','Mai','Jun'],datasets:[{data:[280,310,355,390,410,428],backgroundColor:'#00D9C0',borderRadius:6}]},options:co({y:{display:false}})})},40);
+ loadAgente();
 }
-function agStat(v,l,i){return `<div class="card metric"><div class="ic" style="background:var(--g2);color:#2a0a18"><i class="ti ${i}"></i></div><div class="v">${v}</div><div class="l">${l}</div></div>`}
+function agStat(id,l,i){return `<div class="card metric"><div class="ic" style="background:var(--g2);color:#2a0a18"><i class="ti ${i}"></i></div><div class="v" id="${id}">…</div><div class="l">${l}</div></div>`}
+async function loadAgente(){
+ let d=null;try{const r=await api('/api/agente');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='agente')return;
+ if(!d){['agConversas','agSemHumano','agTempo','agExec','agHoras','agEconomia','agManual','agOpsMes'].forEach(id=>ovSetVal(id,'—'));const o=document.getElementById('agOps');if(o)o.innerHTML='<div class="muted">Indisponível</div>';return;}
+ const pct=d.cards.semHumanoPct==null?'—':d.cards.semHumanoPct+'%';
+ ovSetVal('agConversas',d.cards.conversas);ovSetVal('agSemHumano',pct);ovSetVal('agTempo',d.cards.tempoMedio);ovSetVal('agExec',d.cards.execucoesAD);
+ ovSetVal('agHoras',d.roi.horas+'h');ovSetVal('agEconomia','R$ '+(d.roi.economia||0).toLocaleString('pt-BR'));ovSetVal('agManual',pct);ovSetVal('agOpsMes',d.cards.execucoesAD);
+ const ops=d.operacoes||[];const max=Math.max(1,...ops.map(o=>o.total));const oc=document.getElementById('agOps');
+ if(oc)oc.innerHTML=ops.length?ops.map(o=>`<div class="mb12"><div class="flex" style="justify-content:space-between;font-size:13px"><span>${o.nome}</span><span class="mono muted">${o.total}</span></div><div class="barh mt8"><i style="width:${Math.round(o.total/max*100)}%"></i></div></div>`).join(''):'<div class="muted">Sem dados no período</div>';
+ const hm=d.horasMensais||{labels:[],data:[]};
+ if(window.__agChart&&window.__agChart.destroy)window.__agChart.destroy();
+ Chart.defaults.color='rgba(248,249,250,.6)';
+ window.__agChart=new Chart(document.getElementById('cAg'),{type:'bar',data:{labels:hm.labels,datasets:[{data:hm.data,backgroundColor:'#00D9C0',borderRadius:6}]},options:co({y:{display:false}})});
+}
 
 function renderSysUsers(v){
  v.innerHTML=ph('Usuários do sistema',STATE.users.length+' usuários do painel',`<button class="btn btn-grad btn-sm" onclick="openNewUser()"><i class="ti ti-plus"></i> Novo usuário</button>`)+

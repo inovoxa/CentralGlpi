@@ -12,6 +12,7 @@ import ticketRoutes from './routes/tickets.js';
 import slaRoutes from './routes/sla.js';
 import liveRoutes from './routes/live.js';
 import conversasRoutes from './routes/conversas.js';
+import agenteRoutes from './routes/agente.js';
 import { pgClose } from './db/postgres.js';
 import { glpiClose } from './db/mysql.js';
 
@@ -37,6 +38,7 @@ await app.register(ticketRoutes);
 await app.register(slaRoutes);
 await app.register(liveRoutes);
 await app.register(conversasRoutes);
+await app.register(agenteRoutes);
 
 // Front estático (index.html + imagens). Wildcard não conflita com /api/* (rotas exatas vencem).
 await app.register(fstatic, {
