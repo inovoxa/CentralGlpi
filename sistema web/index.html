@@ -542,7 +542,9 @@ let CURRENT='overview';
 function togglePw(id,el){const i=document.getElementById(id);if(i.type==='password'){i.type='text';el.className='ti ti-eye-off toggle'}else{i.type='password';el.className='ti ti-eye toggle'}}
 // Wrapper de fetch para a API (mesma origem; cookie de sessão httpOnly vai junto).
 async function api(path,opts={}){
- const res=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});
+ const headers={...(opts.headers||{})};
+ if(opts.body)headers['Content-Type']='application/json';
+ const res=await fetch(path,{credentials:'same-origin',headers,...opts});
  let data=null;try{data=await res.json()}catch{}
  return {ok:res.ok,status:res.status,data:data||{}};
 }
@@ -1077,85 +1079,171 @@ async function loadAgente(){
  window.__agChart=new Chart(document.getElementById('cAg'),{type:'bar',data:{labels:hm.labels,datasets:[{data:hm.data,backgroundColor:'#00D9C0',borderRadius:6}]},options:co({y:{display:false}})});
 }
 
+function val(id){return (document.getElementById(id)||{}).value||''}
 function renderSysUsers(v){
- v.innerHTML=ph('Usuários do sistema',STATE.users.length+' usuários do painel',`<button class="btn btn-grad btn-sm" onclick="openNewUser()"><i class="ti ti-plus"></i> Novo usuário</button>`)+
- `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Setor</th><th>Status</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>
- ${STATE.users.map(u=>`<tr><td><div class="flex center ic-gap"><div class="cav" style="width:30px;height:30px;font-size:11px;background:${PROFILES[u.profile].color}">${initials(u.nome)}</div>${u.nome}</div></td>
-  <td class="muted">${u.email}</td><td><span class="badge b-blue">${PROFILES[u.profile].name}</span></td><td>${u.sector}</td>
+ v.innerHTML=ph('Usuários do sistema','Carregando…',`<button class="btn btn-grad btn-sm" onclick="openNewUser()"><i class="ti ti-plus"></i> Novo usuário</button>`)+
+ `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Setor</th><th>Status</th><th>Último acesso</th><th>2FA</th><th>Ações</th></tr></thead><tbody id="suBody"><tr><td colspan="8" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ loadSysUsers();
+}
+async function loadSysUsers(){
+ let d=null;try{const r=await api('/api/admin/usuarios');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='sysusers')return;const b=document.getElementById('suBody');if(!b)return;
+ if(!d){b.innerHTML='<tr><td colspan="8" class="muted" style="padding:20px;text-align:center">Indisponível</td></tr>';return;}
+ STATE.adminUsers=d.usuarios;STATE.adminPorPerfil=d.porPerfil||{};
+ const h=document.querySelector('.page-head p');if(h)h.textContent=d.usuarios.length+' usuários do painel';
+ b.innerHTML=d.usuarios.map(u=>{const pm=PROFILES[u.profile]||{name:u.profile,color:'var(--mut)'};return `<tr>
+  <td><div class="flex center ic-gap"><div class="cav" style="width:30px;height:30px;font-size:11px;background:${pm.color}">${initials(u.nome)}</div>${u.nome}</div></td>
+  <td class="muted">${u.email}</td><td><span class="badge b-blue">${pm.name}</span></td><td>${u.sector||'—'}</td>
   <td><span class="badge ${u.status==='ativo'?'b-green':u.status==='bloqueado'?'b-red':'b-grey'}">${u.status}</span></td>
-  <td class="mono" style="font-size:11px">${u.last||'—'}</td>
-  <td class="actions-cell"><button class="iconbtn" title="Editar" onclick="openEditUser(${u.id})"><i class="ti ti-edit"></i></button><button class="iconbtn" title="Redefinir senha" onclick="toast('Senha redefinida para '+'${u.nome}'+' (simulado)')"><i class="ti ti-key"></i></button><button class="iconbtn" title="Auditoria" onclick="navigate('accesslogs')"><i class="ti ti-history"></i></button></td></tr>`).join('')}
- </tbody></table></div>`;
+  <td class="mono" style="font-size:11px">${u.ultimo_login?fmtDT(u.ultimo_login):'—'}</td>
+  <td>${u.totp_enabled?'<span class="badge b-green">ativo</span>':'<span class="badge b-grey">—</span>'}</td>
+  <td class="actions-cell"><button class="iconbtn" title="Editar" onclick="openEditUser(${u.id})"><i class="ti ti-edit"></i></button><button class="iconbtn" title="Redefinir senha" onclick="resetUserSenha(${u.id})"><i class="ti ti-key"></i></button></td></tr>`}).join('');
 }
 function openNewUser(){modal(`<div class="modal"><div class="mh"><h3>Novo usuário do sistema</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
- <div class="field"><label>Nome completo</label><input class="inp" placeholder="Nome"></div>
- <div class="field"><label>E-mail (@araraquara.sp.gov.br)</label><input class="inp" placeholder="usuario@araraquara.sp.gov.br"></div>
- <div class="grid g2"><div class="field"><label>Perfil</label><select class="inp">${Object.keys(PROFILES).map(p=>`<option>${PROFILES[p].name}</option>`).join('')}</select></div>
- <div class="field"><label>Setor</label><select class="inp">${SECTORS.map(s=>`<option>${s.nome}</option>`).join('')}</select></div></div>
- <div class="field"><label>Acesso</label><select class="inp"><option>Convidar por e-mail</option><option>Definir senha provisória</option></select></div>
- <label class="check mt8"><input type="checkbox" checked> Forçar troca de senha no primeiro acesso</label>
- <div class="btnrow"><button class="btn btn-grad" onclick="toast('Usuário criado (simulado)');logOp('criou usuário do sistema','novo cadastro');closeModal()">Criar usuário</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
-function openEditUser(id){const u=STATE.users.find(x=>x.id===id);modal(`<div class="modal"><div class="mh"><div><h3>${u.nome}</h3><div class="msub">${u.email}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
- <div class="tabs"><button class="on" onclick="tabSwitch(this,'eu1')">Dados</button><button onclick="tabSwitch(this,'eu2')">Permissões granulares</button><button onclick="tabSwitch(this,'eu3')">Histórico</button></div>
- <div id="eu1"><div class="field"><label>Perfil</label><select class="inp">${Object.keys(PROFILES).map(p=>`<option ${p===u.profile?'selected':''}>${PROFILES[p].name}</option>`).join('')}</select></div><div class="field"><label>Status</label><select class="inp"><option>ativo</option><option>inativo</option><option>bloqueado</option></select></div></div>
- <div id="eu2" class="hidden"><p class="muted mb12" style="font-size:12px">Sobrepõe o perfil para este usuário.</p><div class="permgrid">${ALLPERMS.slice(0,8).map(p=>`<label class="permrow"><span class="sw ${PROFILES[u.profile].perms.includes(p)?'on':''}" onclick="this.classList.toggle('on')"></span>${permLabel(p)}</label>`).join('')}</div></div>
- <div id="eu3" class="hidden"><div class="tl">${STATE.accessLogs.filter(l=>l.email===u.email).slice(0,5).map(l=>`<div class="tlitem"><div class="tdot" style="background:${l.res==='Falha'?'var(--err)':'var(--p)'}"><i class="ti ti-login"></i></div><div class="tx">${l.act} — ${l.res}</div><div class="tm mono">${fmtDate(l.d)}</div></div>`).join('')||'<div class="muted">Sem registros</div>'}</div></div>
- <div class="btnrow"><button class="btn btn-grad" onclick="toast('Alterações salvas (simulado)');closeModal()">Salvar</button><button class="btn btn-line" onclick="closeModal()">Fechar</button></div></div>`)}
+ <div class="field"><label>Nome completo</label><input class="inp" id="nuNome" placeholder="Nome"></div>
+ <div class="field"><label>E-mail</label><input class="inp" id="nuEmail" placeholder="usuario@araraquara.sp.gov.br"></div>
+ <div class="grid g2"><div class="field"><label>Perfil</label><select class="inp" id="nuPerfil">${Object.keys(PROFILES).map(p=>`<option value="${p}">${PROFILES[p].name}</option>`).join('')}</select></div>
+ <div class="field"><label>Setor</label><input class="inp" id="nuSetor" placeholder="Setor (opcional)"></div></div>
+ <div class="field"><label>Senha inicial (opcional — gerada se vazio)</label><input class="inp" id="nuSenha" placeholder="deixe vazio para gerar"></div>
+ <div class="btnrow"><button class="btn btn-grad" id="nuBtn" onclick="criarUsuario()">Criar usuário</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+async function criarUsuario(){
+ const nome=val('nuNome'),email=val('nuEmail'),profile=val('nuPerfil'),sector=val('nuSetor'),senha=val('nuSenha');
+ if(!nome||!email){toast('Informe nome e e-mail');return;}
+ const btn=document.getElementById('nuBtn');btn.disabled=true;
+ try{const {ok,data}=await api('/api/admin/usuarios',{method:'POST',body:JSON.stringify({nome,email,profile,sector,senha:senha||undefined})});
+  if(!ok)throw new Error(data.error||'falha');
+  closeModal();toast('Usuário criado');
+  if(data.senhaInicial)setTimeout(()=>showSenha(email,data.senhaInicial),120);
+  loadSysUsers();
+ }catch(e){toast('Erro: '+e.message);btn.disabled=false}
+}
+function showSenha(rotulo,senha){modal(`<div class="modal"><div class="mh"><h3>Senha definida</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div><p class="muted mb12">Repasse com segurança. O usuário cadastra o 2FA no primeiro acesso.</p><div class="kv"><span class="k">${rotulo}</span><span class="mono" style="font-weight:700">${senha}</span></div><div class="btnrow"><button class="btn btn-grad" onclick="closeModal()">Ok</button></div></div>`)}
+function openEditUser(id){const u=(STATE.adminUsers||[]).find(x=>x.id===id);if(!u)return;
+ modal(`<div class="modal"><div class="mh"><div><h3>${u.nome}</h3><div class="msub">${u.email}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+  <div class="grid g2">
+   <div class="field"><label>Perfil</label><select class="inp" id="euPerfil">${Object.keys(PROFILES).map(p=>`<option value="${p}" ${p===u.profile?'selected':''}>${PROFILES[p].name}</option>`).join('')}</select></div>
+   <div class="field"><label>Status</label><select class="inp" id="euStatus">${['ativo','inativo','bloqueado'].map(s=>`<option ${s===u.status?'selected':''}>${s}</option>`).join('')}</select></div>
+  </div>
+  <div class="field"><label>Setor</label><input class="inp" id="euSetor" value="${u.sector||''}"></div>
+  <div class="btnrow"><button class="btn btn-grad" onclick="salvarUsuario(${id})">Salvar</button>
+   <button class="btn btn-line" onclick="resetUser2fa(${id})"><i class="ti ti-shield-off"></i> Resetar 2FA</button>
+   <button class="btn btn-line btn-pink" onclick="excluirUsuario(${id})"><i class="ti ti-trash"></i> Excluir</button></div></div>`)}
+async function salvarUsuario(id){
+ try{const {ok,data}=await api('/api/admin/usuarios/'+id,{method:'PATCH',body:JSON.stringify({profile:val('euPerfil'),sector:val('euSetor'),status:val('euStatus')})});
+  if(!ok)throw new Error(data.error||'falha');closeModal();toast('Alterações salvas');loadSysUsers();
+ }catch(e){toast('Erro: '+e.message)}
+}
+async function resetUserSenha(id){
+ try{const {ok,data}=await api('/api/admin/usuarios/'+id+'/reset-senha',{method:'POST'});
+  if(!ok)throw new Error(data.error||'falha');showSenha('Nova senha',data.senhaInicial);loadSysUsers();
+ }catch(e){toast('Erro: '+e.message)}
+}
+async function resetUser2fa(id){
+ try{const {ok,data}=await api('/api/admin/usuarios/'+id+'/reset-2fa',{method:'POST'});if(!ok)throw new Error(data.error||'falha');closeModal();toast('2FA resetado');loadSysUsers();}catch(e){toast('Erro: '+e.message)}
+}
+async function excluirUsuario(id){
+ if(!confirm('Excluir este usuário do painel?'))return;
+ try{const {ok,data}=await api('/api/admin/usuarios/'+id,{method:'DELETE'});if(!ok)throw new Error(data.error||'falha');closeModal();toast('Usuário excluído');loadSysUsers();}catch(e){toast('Erro: '+e.message)}
+}
 function permLabel(p){return PERMS.flatMap(g=>g.items).find(i=>i[0]===p)?.[1]||p}
 function tabSwitch(btn,id){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
  btn.closest('.modal,.view,.card').querySelectorAll('[id^="'+id.slice(0,2)+'"]').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden')}
 
 function renderProfiles(v){
- v.innerHTML=ph('Perfis e permissões','5 perfis configurados',`<button class="btn btn-grad btn-sm" onclick="toast('Criação de perfil customizado (simulado)')"><i class="ti ti-plus"></i> Novo perfil</button>`)+
- `<div class="grid g2">${Object.entries(PROFILES).map(([k,p])=>`<div class="card"><div class="flex center" style="justify-content:space-between"><div><h4 style="color:${p.color}">${p.name}</h4><p class="muted" style="font-size:12.5px">${p.desc}</p></div><span class="badge b-grey">${STATE.users.filter(u=>u.profile===k).length} usuários</span></div>
+ paintProfiles(v);
+ api('/api/admin/usuarios').then(r=>{if(r.ok){STATE.adminPorPerfil=r.data.porPerfil||{};if(CURRENT==='profiles')paintProfiles(document.getElementById('view'));}}).catch(()=>{});
+}
+function paintProfiles(v){
+ const counts=STATE.adminPorPerfil||{};
+ v.innerHTML=ph('Perfis e permissões',Object.keys(PROFILES).length+' perfis definidos no sistema')+
+ `<div class="grid g2">${Object.entries(PROFILES).map(([k,p])=>`<div class="card"><div class="flex center" style="justify-content:space-between"><div><h4 style="color:${p.color}">${p.name}</h4><p class="muted" style="font-size:12.5px">${p.desc}</p></div><span class="badge b-grey">${counts[k]??'—'} usuários</span></div>
   <div class="mt16 flex wrap" style="gap:5px">${p.perms.slice(0,6).map(pr=>`<span class="chip">${permLabel(pr)}</span>`).join('')}${p.perms.length>6?`<span class="chip">+${p.perms.length-6}</span>`:''}</div>
-  <button class="btn btn-line btn-sm mt16" onclick="openPermEdit('${k}')"><i class="ti ti-adjustments"></i> Editar permissões</button></div>`).join('')}</div>`;
+  <button class="btn btn-line btn-sm mt16" onclick="openPermEdit('${k}')"><i class="ti ti-eye"></i> Ver permissões</button></div>`).join('')}</div>
+ <div class="muted mt16" style="font-size:12px">Perfis e permissões são definidos no servidor (RBAC). Edição dinâmica pode ser adicionada depois.</div>`;
 }
 function openPermEdit(k){const p=PROFILES[k];modal(`<div class="modal wide"><div class="mh"><div><h3>${p.name}</h3><div class="msub">${p.desc}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
- ${PERMS.map(g=>`<div class="grp" style="margin:14px 0 8px">${g.g}</div><div class="permgrid">${g.items.map(it=>`<label class="permrow"><span class="sw ${p.perms.includes(it[0])?'on':''}" onclick="this.classList.toggle('on')"></span>${it[1]}</label>`).join('')}</div>`).join('')}
- <div class="btnrow"><button class="btn btn-grad" onclick="toast('Permissões do perfil ${p.name} salvas (simulado)');logOp('editou permissões do perfil','${p.name}');closeModal()">Salvar</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+ ${PERMS.map(g=>`<div class="grp" style="margin:14px 0 8px">${g.g}</div><div class="permgrid">${g.items.map(it=>`<label class="permrow"><span class="sw ${p.perms.includes(it[0])?'on':''}"></span>${it[1]}</label>`).join('')}</div>`).join('')}
+ <div class="btnrow"><button class="btn btn-line" onclick="closeModal()">Fechar</button></div></div>`)}
 
 function renderSectors(v){
- v.innerHTML=ph('Setores',SECTORS.length+' setores da prefeitura',`<button class="btn btn-grad btn-sm" onclick="toast('Novo setor (simulado)')"><i class="ti ti-plus"></i> Novo setor</button>`)+
- `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Setor</th><th>Sigla</th><th>Responsável</th><th>OU no AD</th><th>Categoria padrão</th><th>Ações</th></tr></thead><tbody>
- ${SECTORS.map(s=>`<tr><td>${s.nome}</td><td><span class="badge b-grey">${s.sigla}</span></td><td>${s.resp}</td><td class="mono" style="font-size:12px">${s.ou}</td><td>${s.cat}</td><td class="actions-cell"><button class="iconbtn" onclick="toast('Editar ${s.sigla} (simulado)')"><i class="ti ti-edit"></i></button></td></tr>`).join('')}
- </tbody></table></div>`;
+ v.innerHTML=ph('Setores','Setores com chamados registrados (via chamados_log)')+
+ `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Setor (secretaria)</th><th>Chamados</th><th>Automatizados</th><th>Último chamado</th></tr></thead><tbody id="secBody"><tr><td colspan="4" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ loadSectors();
+}
+async function loadSectors(){
+ let d=null;try{const r=await api('/api/admin/setores');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='sectors')return;const b=document.getElementById('secBody');if(!b)return;
+ if(!d){b.innerHTML='<tr><td colspan="4" class="muted" style="padding:20px;text-align:center">Indisponível</td></tr>';return;}
+ const h=document.querySelector('.page-head p');if(h)h.textContent=d.setores.length+' setores em atividade';
+ b.innerHTML=d.setores.length?d.setores.map(s=>`<tr><td>${s.nome}</td><td class="mono">${s.chamados}</td><td class="mono">${s.automatizados}</td><td class="mono" style="font-size:11px">${s.ultimo?fmtDT(s.ultimo):'—'}</td></tr>`).join(''):'<tr><td colspan="4" class="muted" style="padding:20px;text-align:center">Nenhum setor com chamados</td></tr>';
 }
 
 function renderConfig(v){
- v.innerHTML=ph('Configurações','Parâmetros do sistema')+
- `<div class="card"><div class="tabs"><button class="on" onclick="tabSwitch(this,'cf1')">Geral</button><button onclick="tabSwitch(this,'cf2')">Integrações</button><button onclick="tabSwitch(this,'cf3')">Notificações</button><button onclick="tabSwitch(this,'cf4')">Segurança</button><button onclick="tabSwitch(this,'cf5')">Backup</button></div>
- <div id="cf1"><div class="grid g2"><div class="field"><label>Nome do sistema</label><input class="inp" value="Central de Operações GLPI"></div><div class="field"><label>Fuso horário</label><input class="inp" value="America/Sao_Paulo (GMT-3)"></div><div class="field"><label>Formato de data</label><select class="inp"><option>dd/mm/aaaa</option><option>aaaa-mm-dd</option></select></div></div></div>
- <div id="cf2" class="hidden">${[['GLPI','suporte.araraquara.sp.gov.br','ok'],['Chatwoot','chat.araraquara.sp.gov.br','ok'],['SMARAPD (RH)','sistemarh.araraquara.sp.gov.br','ok'],['Active Directory','pma.local','ok']].map(i=>`<div class="flex center" style="justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--brd)"><div><b>${i[0]}</b><div class="muted mono" style="font-size:12px">${i[1]}</div></div><div class="flex ic-gap center"><span class="badge b-green"><span class="dot" style="width:7px;height:7px"></span> online</span><button class="btn btn-line btn-sm" onclick="toast('Testando ${i[0]}... conexão OK')">Testar conexão</button></div></div>`).join('')}</div>
- <div id="cf3" class="hidden"><p class="muted mb12">Gatilhos de notificação por perfil.</p>${['Chamado violou SLA','Desligamento detectado (RH)','Chamado aguardando aprovação','Execução AD concluída'].map(n=>`<div class="permrow mb12" style="justify-content:space-between"><span>${n}</span><div class="flex ic-gap"><span class="chip active">E-mail</span><span class="chip">Push</span><span class="chip">WhatsApp</span></div></div>`).join('')}</div>
- <div id="cf4" class="hidden"><div class="grid g2"><div class="field"><label>Mínimo de caracteres da senha</label><input class="inp" value="12"></div><div class="field"><label>Expiração da senha (dias)</label><input class="inp" value="90"></div><div class="field"><label>Timeout de sessão (min)</label><input class="inp" value="30"></div><div class="field"><label>Tentativas antes do bloqueio</label><input class="inp" value="3"></div></div><label class="check mt8"><input type="checkbox" checked> Exigir 2FA para Admin e Coordenador</label><div class="field mt16"><label>IPs permitidos (allowlist)</label><input class="inp" value="10.10.0.0/16"></div></div>
- <div id="cf5" class="hidden"><div class="grid g2"><div class="field"><label>Frequência</label><select class="inp"><option>Diário</option><option>A cada 12h</option></select></div><div class="field"><label>Retenção (dias)</label><input class="inp" value="30"></div></div><div class="kv"><span class="k">Último backup</span><span class="mono">01/06/2026 03:00</span></div><button class="btn btn-grad mt16" onclick="toast('Backup iniciado (simulado)')"><i class="ti ti-database-export"></i> Backup agora</button></div>
- <div class="btnrow"><button class="btn btn-grad" onclick="toast('Configurações salvas (simulado)');logOp('alterou configurações do sistema','—')">Salvar alterações</button></div></div>`;
+ v.innerHTML=ph('Configurações','Status e parâmetros do sistema')+`<div id="cfgBody"><div class="muted" style="padding:10px">Carregando…</div></div>`;
+ loadConfig();
+}
+async function loadConfig(){
+ let d=null;try{const r=await api('/api/admin/status');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='config')return;const el=document.getElementById('cfgBody');if(!el)return;
+ if(!d){el.innerHTML='<div class="muted">Indisponível</div>';return;}
+ const dot=s=>`<span class="badge ${s?'b-green':'b-red'}"><span class="dot" style="width:7px;height:7px;background:${s?'var(--ok)':'var(--err)'}"></span> ${s?'online':'offline'}</span>`;
+ const I=d.integracoes,P=d.parametros;
+ el.innerHTML=`<div class="grid g2">
+   <div class="card"><h4 class="mb12">Integrações</h4>
+     ${[['PostgreSQL',I.postgres.up],['MySQL GLPI',I.glpi_mysql.up],['Chatwoot',I.chatwoot.up],['Active Directory (coletor)',I.active_directory.up]].map(i=>`<div class="flex center" style="justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--brd)"><b>${i[0]}</b>${dot(i[1])}</div>`).join('')}
+   </div>
+   <div class="card"><h4 class="mb12">Parâmetros</h4>
+     <div class="kv"><span class="k">Fuso horário</span><span>${P.timezone}</span></div>
+     <div class="kv"><span class="k">Tentativas até bloqueio</span><span>${P.login.maxAttempts}</span></div>
+     <div class="kv"><span class="k">Bloqueio (min)</span><span>${P.login.lockoutMinutes}</span></div>
+     <div class="kv"><span class="k">Emissor 2FA</span><span>${P.totpIssuer}</span></div>
+     <div class="kv"><span class="k">ROI · min/operação</span><span>${P.agente.minPorOp}</span></div>
+     <div class="kv"><span class="k">ROI · custo/hora</span><span>R$ ${P.agente.custoHora}</span></div>
+     <div class="kv"><span class="k">Perfis</span><span>${P.perfis}</span></div>
+   </div></div>
+   <div class="muted mt16" style="font-size:12px">Parâmetros são definidos por variáveis de ambiente no Coolify (não editáveis aqui, por segurança).</div>`;
 }
 
+function baixarCsv(tipo){window.open('/api/admin/logs/'+tipo+'.csv','_blank')}
 function renderAccessLogs(v){
- v.innerHTML=ph('Logs de acesso',STATE.accessLogs.length+' registros',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Exportar CSV</button>`)+
- `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar usuário/IP..." oninput="filterTbl('altbl',this.value)"></div><select class="inp" style="width:auto" onchange="filterRes('altbl',this.value)"><option value="">Todos resultados</option><option>Sucesso</option><option>Falha</option></select></div>
- <div class="tbl-wrap card" style="padding:0"><table id="altbl"><thead><tr><th>Data/hora</th><th>Usuário</th><th>IP</th><th>Local</th><th>Dispositivo</th><th>Ação</th><th>Resultado</th></tr></thead><tbody>
- ${STATE.accessLogs.map(l=>`<tr data-s="${(l.user+l.ip).toLowerCase()}" data-res="${l.res}"><td class="mono" style="font-size:11px">${fmtDate(l.d)}</td><td>${l.user}</td><td class="mono">${l.ip}</td><td>${l.loc}</td><td class="muted" style="font-size:12px">${l.dev}</td><td>${l.act}</td><td><span class="badge ${l.res==='Falha'?'b-red':'b-green'}">${l.res}</span></td></tr>`).join('')}
- </tbody></table></div>`;
+ v.innerHTML=ph('Logs de acesso','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'baixarCsv(\'acesso\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Exportar CSV</button>`)+
+ `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar usuário/IP/e-mail..." oninput="filterTbl('altbl',this.value)"></div><select class="inp" style="width:auto" onchange="filterRes('altbl',this.value)"><option value="">Todos resultados</option><option value="sucesso">Sucesso</option><option value="falha">Falha</option><option value="bloqueado">Bloqueado</option></select></div>
+ <div class="tbl-wrap card" style="padding:0"><table id="altbl"><thead><tr><th>Data/hora</th><th>Usuário</th><th>IP</th><th>Ação</th><th>Dispositivo</th><th>Resultado</th></tr></thead><tbody id="alBody"><tr><td colspan="6" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ loadAccessLogs();
+}
+async function loadAccessLogs(){
+ let d=null;try{const r=await api('/api/admin/logs/acesso');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='accesslogs')return;const b=document.getElementById('alBody');if(!b)return;
+ if(!d){b.innerHTML='<tr><td colspan="6" class="muted" style="padding:20px;text-align:center">Indisponível</td></tr>';return;}
+ const h=document.querySelector('.page-head p');if(h)h.textContent=d.logs.length+' registros';
+ const rb=r=>r==='sucesso'?'b-green':r==='bloqueado'?'b-amber':'b-red';
+ b.innerHTML=d.logs.length?d.logs.map(l=>`<tr data-s="${((l.nome||'')+(l.ip||'')+(l.email||'')).toLowerCase()}" data-res="${l.result}"><td class="mono" style="font-size:11px">${fmtDT(l.created_at)}</td><td>${l.nome}</td><td class="mono">${l.ip||'—'}</td><td>${l.action}</td><td class="muted" style="font-size:12px">${(l.user_agent||'').slice(0,42)}</td><td><span class="badge ${rb(l.result)}">${l.result}</span></td></tr>`).join(''):'<tr><td colspan="6" class="muted" style="padding:20px;text-align:center">Sem registros</td></tr>';
 }
 function renderOpLogs(v){
- v.innerHTML=ph('Logs de operação',STATE.operationLogs.length+' registros imutáveis',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'Exportado JSON\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Exportar</button>`)+
+ v.innerHTML=ph('Logs de operação','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'baixarCsv(\'operacao\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Exportar</button>`)+
  `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar ação/usuário..." oninput="filterTbl('optbl',this.value)"></div></div>
- <div class="tbl-wrap card" style="padding:0"><table id="optbl"><thead><tr><th>Data/hora</th><th>Usuário</th><th>Perfil</th><th>Ação</th><th>Antes → Depois</th><th>IP</th></tr></thead><tbody>
- ${STATE.operationLogs.map(l=>`<tr data-s="${(l.user+l.acao).toLowerCase()}"><td class="mono" style="font-size:11px">${fmtDate(l.d)}</td><td>${l.user}</td><td><span class="badge b-blue">${l.profile}</span></td><td>${l.acao}</td><td class="muted">${l.delta}</td><td class="mono">${l.ip}</td></tr>`).join('')}
- </tbody></table></div>`;
+ <div class="tbl-wrap card" style="padding:0"><table id="optbl"><thead><tr><th>Data/hora</th><th>Usuário</th><th>Perfil</th><th>Ação</th><th>Detalhe</th><th>IP</th></tr></thead><tbody id="opBody"><tr><td colspan="6" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ loadOpLogs();
+}
+async function loadOpLogs(){
+ let d=null;try{const r=await api('/api/admin/logs/operacao');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='oplogs')return;const b=document.getElementById('opBody');if(!b)return;
+ if(!d){b.innerHTML='<tr><td colspan="6" class="muted" style="padding:20px;text-align:center">Indisponível</td></tr>';return;}
+ const h=document.querySelector('.page-head p');if(h)h.textContent=d.logs.length+' registros';
+ const pn=p=>PROFILES[p]?.name||p||'—';
+ b.innerHTML=d.logs.length?d.logs.map(l=>`<tr data-s="${((l.nome||'')+(l.acao||'')).toLowerCase()}"><td class="mono" style="font-size:11px">${fmtDT(l.created_at)}</td><td>${l.nome}</td><td><span class="badge b-blue">${pn(l.profile)}</span></td><td>${l.acao}</td><td class="muted">${l.delta||'—'}</td><td class="mono">${l.ip||'—'}</td></tr>`).join(''):'<tr><td colspan="6" class="muted" style="padding:20px;text-align:center">Sem registros</td></tr>';
 }
 function filterTbl(id,q){q=q.toLowerCase();document.querySelectorAll('#'+id+' tbody tr').forEach(r=>r.style.display=(!q||r.dataset.s.includes(q))?'':'none')}
 function filterRes(id,r){document.querySelectorAll('#'+id+' tbody tr').forEach(x=>x.style.display=(!r||x.dataset.res===r)?'':'none')}
 
 function renderReports(v){
- const reps=[['SLA mensal — Maio/2026','PDF','01/06 03:10'],['Volume de chamados — Maio','Excel','01/06 03:10'],['Operações do Agente IA — Maio','PDF','31/05 22:00'],['Auditoria de acessos — Q2','CSV','28/05 09:00'],['Relatório LGPD — tratamento de dados','PDF','25/05 14:30']];
- v.innerHTML=ph('Relatórios','Geração e agendamento de relatórios',`<button class="btn btn-grad btn-sm" onclick="openNewReport()"><i class="ti ti-plus"></i> Novo relatório</button>`)+
- `<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Relatório</th><th>Formato</th><th>Gerado em</th><th>Ações</th></tr></thead><tbody>
- ${reps.map(r=>`<tr><td>${r[0]}</td><td><span class="badge b-grey">${r[1]}</span></td><td class="mono" style="font-size:11px">${r[2]}</td><td class="actions-cell"><button class="iconbtn" onclick="toast('Download iniciado (simulado)')"><i class="ti ti-download"></i></button><button class="iconbtn" onclick="toast('Prévia (simulado)')"><i class="ti ti-eye"></i></button></td></tr>`).join('')}
- </tbody></table></div>`;
+ const podeExp=can('export');
+ v.innerHTML=ph('Relatórios','Exportações de dados reais do painel')+
+ `<div class="grid g2">
+   <div class="card"><h4 class="mb12"><i class="ti ti-login"></i> Logs de acesso</h4><p class="muted mb12" style="font-size:13px">Logins, logouts e validações 2FA do painel.</p><button class="btn btn-grad btn-sm" onclick="${podeExp?'baixarCsv(\'acesso\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Baixar CSV</button></div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-list-check"></i> Logs de operação</h4><p class="muted mb12" style="font-size:13px">Ações no painel (Kanban, conversas, gestão de usuários).</p><button class="btn btn-grad btn-sm" onclick="${podeExp?'baixarCsv(\'operacao\')':'toast(\'Sem permissão\')'}"><i class="ti ti-download"></i> Baixar CSV</button></div>
+ </div>
+ <div class="muted mt16" style="font-size:12px">Relatórios de SLA/chamados em PDF podem ser adicionados numa próxima etapa.</div>`;
 }
 function openNewReport(){modal(`<div class="modal"><div class="mh"><h3>Novo relatório</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
  <div class="field"><label>Tipo</label><select class="inp"><option>SLA mensal</option><option>Volume de chamados</option><option>Operações do Agente IA</option><option>Auditoria de acessos</option><option>Relatório LGPD</option></select></div>
@@ -1165,27 +1253,40 @@ function openNewReport(){modal(`<div class="modal"><div class="mh"><h3>Novo rela
 function openExport(){modal(`<div class="modal"><div class="mh"><h3>Prévia de exportação</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div><div class="card" style="text-align:center;padding:40px"><i class="ti ti-file-type-pdf" style="font-size:54px;color:var(--err)"></i><div class="mt8">Relatório SLA mensal · Junho/2026</div><div class="muted" style="font-size:12px">5 páginas · gráficos incluídos</div></div><div class="btnrow"><button class="btn btn-grad" onclick="toast('PDF baixado (simulado)');closeModal()"><i class="ti ti-download"></i> Baixar PDF</button></div></div>`)}
 
 function renderMyProfile(v){
- const u=STATE.currentUser;
+ const u=STATE.currentUser;const pm=PROFILES[u.profile]||{name:u.profile,color:'var(--mut)'};
  v.innerHTML=ph('Meu perfil','Suas informações e segurança')+
- `<div class="grid g2"><div class="card"><div class="flex center ic-gap mb12"><div class="cav" style="width:64px;height:64px;font-size:22px;background:${PROFILES[u.profile].color}">${initials(u.nome)}</div><div><h3>${u.nome}</h3><span class="badge b-blue">${PROFILES[u.profile].name}</span></div></div>
-  <button class="btn btn-line btn-sm" onclick="toast('Upload de foto (simulado)')"><i class="ti ti-upload"></i> Trocar foto</button>
-  <div class="mt16"><div class="kv"><span class="k">E-mail</span><span>${u.email}</span></div><div class="kv"><span class="k">Telefone</span><span>${u.tel||'—'}</span></div><div class="kv"><span class="k">Setor</span><span>${u.sector}</span></div></div>
-  <div class="btnrow"><button class="btn btn-line btn-sm" onclick="openChangePass()"><i class="ti ti-key"></i> Trocar senha</button><button class="btn btn-line btn-sm" onclick="toast('Configurar 2FA — QR code (simulado)')"><i class="ti ti-qrcode"></i> Configurar 2FA</button></div></div>
-  <div class="card"><h4 class="mb12">Sessões ativas</h4>
-   ${[['Chrome 124 / Windows','10.10.2.14 · Araraquara','agora'],['Aplicativo móvel / Android','10.10.5.7 · Araraquara','2h'],['Edge / Windows','10.10.2.3 · Araraquara','ontem']].map((s,i)=>`<div class="flex center" style="justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--brd)"><div><div style="font-size:13px">${s[0]} ${i==0?'<span class="badge b-green">atual</span>':''}</div><div class="muted mono" style="font-size:11px">${s[1]} · ${s[2]}</div></div>${i>0?`<button class="btn btn-line btn-sm" onclick="this.closest('div').parentNode.remove?0:0;toast('Sessão encerrada')">Encerrar</button>`:''}</div>`).join('')}
-   <h4 class="mt16 mb12">Minhas notificações</h4>${['SLA em risco','Chamados do meu setor','Desligamentos (RH)'].map(n=>`<label class="permrow mb12"><span class="sw on" onclick="this.classList.toggle('on')"></span>${n}</label>`).join('')}</div></div>`;
+ `<div class="grid g2"><div class="card"><div class="flex center ic-gap mb12"><div class="cav" style="width:64px;height:64px;font-size:22px;background:${pm.color}">${initials(u.nome)}</div><div><h3>${u.nome}</h3><span class="badge b-blue">${pm.name}</span></div></div>
+  <div class="mt16"><div class="kv"><span class="k">E-mail</span><span>${u.email}</span></div><div class="kv"><span class="k">Telefone</span><span>${u.tel||'—'}</span></div><div class="kv"><span class="k">Setor</span><span>${u.sector||'—'}</span></div></div>
+  <div class="btnrow"><button class="btn btn-line btn-sm" onclick="openChangePass()"><i class="ti ti-key"></i> Trocar senha</button></div></div>
+  <div class="card"><h4 class="mb12">Acessos recentes</h4><div id="myAcessos"><div class="muted">Carregando…</div></div></div></div>`;
+ loadMyAcessos();
+}
+async function loadMyAcessos(){
+ let d=null;try{const r=await api('/api/me/acessos');if(r.ok)d=r.data;}catch(e){}
+ const el=document.getElementById('myAcessos');if(!el)return;
+ const a=(d&&d.acessos)||[];
+ el.innerHTML=a.length?`<div class="tl">${a.map(x=>`<div class="tlitem"><div class="tdot" style="background:${x.result==='falha'?'var(--err)':'var(--p)'}"><i class="ti ti-login"></i></div><div class="tx">${x.action} — ${x.result}</div><div class="tm mono">${fmtDT(x.created_at)} · ${x.ip||''}</div></div>`).join('')}</div>`:'<div class="muted">Sem registros</div>';
 }
 
 /* ===================== MODALS ===================== */
 function modal(html){document.getElementById('modalRoot').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()">${html.includes('side-modal')?html:html}</div>`}
 function closeModal(){document.getElementById('modalRoot').innerHTML=''}
 function openForgot(){modal(`<div class="modal"><div class="mh"><h3>Esqueci minha senha</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div><p class="muted mb12">Informe seu e-mail institucional para receber o link de redefinição.</p><div class="field"><input class="inp" placeholder="usuario@araraquara.sp.gov.br"></div><div class="btnrow"><button class="btn btn-grad" onclick="closeModal();toast('Se o e-mail estiver cadastrado, enviamos as instruções.')">Enviar link de redefinição</button></div></div>`)}
-function openChangePass(){modal(`<div class="modal"><div class="mh"><div><h3>${STATE.currentUser?.primeiro_acesso?'Primeiro acesso — defina uma nova senha':'Trocar senha'}</h3><div class="msub">Mínimo 12 caracteres, com maiúscula, número e símbolo</div></div>${STATE.currentUser?.primeiro_acesso?'':'<button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button>'}</div>
- ${STATE.currentUser?.primeiro_acesso?'':'<div class="field"><label>Senha atual</label><input class="inp" type="password"></div>'}
- <div class="field"><label>Nova senha</label><input class="inp" type="password" id="npw" oninput="pwStrength(this.value)"></div>
+function openChangePass(){modal(`<div class="modal"><div class="mh"><div><h3>Trocar senha</h3><div class="msub">Mínimo 12 caracteres, com maiúscula, número e símbolo</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ <div class="field"><label>Senha atual</label><input class="inp" type="password" id="cpAtual"></div>
+ <div class="field"><label>Nova senha</label><input class="inp" type="password" id="cpNova" oninput="pwStrength(this.value)"></div>
  <div class="pwbar"><i id="pwfill" style="width:0%;background:var(--err)"></i></div><div class="muted mt8" id="pwtxt" style="font-size:12px">Força: —</div>
- <div class="field mt16"><label>Confirmar nova senha</label><input class="inp" type="password"></div>
- <div class="btnrow"><button class="btn btn-grad" onclick="if(STATE.currentUser)STATE.currentUser.primeiro_acesso=false;toast('Senha alterada com sucesso');closeModal()">Salvar nova senha</button></div></div>`)}
+ <div class="field mt16"><label>Confirmar nova senha</label><input class="inp" type="password" id="cpConf"></div>
+ <div class="btnrow"><button class="btn btn-grad" id="cpBtn" onclick="trocarSenha()">Salvar nova senha</button></div></div>`)}
+async function trocarSenha(){
+ const atual=val('cpAtual'),nova=val('cpNova'),conf=val('cpConf');
+ if(nova!==conf){toast('As senhas não conferem');return;}
+ if(nova.length<12){toast('Mínimo 12 caracteres');return;}
+ const btn=document.getElementById('cpBtn');btn.disabled=true;
+ try{const {ok,data}=await api('/api/me/senha',{method:'POST',body:JSON.stringify({atual,nova})});
+  if(!ok)throw new Error(data.error||'falha');closeModal();toast('Senha alterada com sucesso');
+ }catch(e){toast('Erro: '+e.message);btn.disabled=false}
+}
 function pwStrength(v){let s=0;if(v.length>=12)s++;if(/[A-Z]/.test(v))s++;if(/[0-9]/.test(v))s++;if(/[^A-Za-z0-9]/.test(v))s++;
  const f=document.getElementById('pwfill'),t=document.getElementById('pwtxt');const map=[['0%','var(--err)','—'],['33%','var(--err)','Fraca'],['66%','var(--warn)','Média'],['85%','var(--warn)','Boa'],['100%','var(--ok)','Forte']];
  const m=map[s];f.style.width=m[0];f.style.background=m[1];t.textContent='Força: '+m[2]}

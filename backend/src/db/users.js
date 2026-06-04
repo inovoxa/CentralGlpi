@@ -56,3 +56,8 @@ export async function enableTotp(id) {
 export async function touchLogin(id) {
   await pgQuery(`UPDATE app_usuarios SET ultimo_login = NOW() WHERE id = $1`, [id]);
 }
+
+// Troca de senha pelo próprio usuário (não força primeiro acesso).
+export async function setOwnPassword(id, hash) {
+  await pgQuery(`UPDATE app_usuarios SET senha_hash = $2 WHERE id = $1`, [id, hash]);
+}
