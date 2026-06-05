@@ -156,9 +156,9 @@ select.inp{appearance:none;cursor:pointer}
 
 /* chat */
 .chatwrap{display:grid;grid-template-columns:35% 65%;gap:0;height:calc(100vh - 220px);min-height:480px;border:1px solid var(--brd);border-radius:16px;overflow:hidden}
-.convlist{border-right:1px solid var(--brd);display:flex;flex-direction:column;background:rgba(255,255,255,.02)}
+.convlist{border-right:1px solid var(--brd);display:flex;flex-direction:column;background:rgba(255,255,255,.02);min-height:0;overflow:hidden}
 .convlist .lh{padding:12px;border-bottom:1px solid var(--brd)}
-.convlist .scroller{overflow-y:auto;flex:1}
+.convlist .scroller{overflow-y:auto;flex:1;min-height:0}
 .convitem{display:flex;gap:10px;padding:12px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;border-left:3px solid transparent;transition:.2s}
 .convitem:hover{background:rgba(255,255,255,.03)}
 .convitem.sel{border-left-color:var(--p);background:rgba(0,217,192,.06)}
@@ -170,9 +170,9 @@ select.inp{appearance:none;cursor:pointer}
 .convitem .csec{font-size:11px;color:var(--mut)}
 .convitem .cprev{font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 .convitem .ctags{display:flex;gap:5px;margin-top:5px;align-items:center}
-.thread{display:flex;flex-direction:column;min-width:0}
+.thread{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 .thread .th{padding:13px 16px;border-bottom:1px solid var(--brd);display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.thread .msgs{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:11px;
+.thread .msgs{flex:1;min-height:0;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:11px;
   background:radial-gradient(circle at 30% 10%,rgba(91,127,222,.05),transparent 60%)}
 .bubble{max-width:74%;padding:9px 13px;border-radius:14px;font-size:13.5px;position:relative}
 .bubble .bt{font-size:9.5px;color:var(--mut);margin-top:5px;text-align:right}
