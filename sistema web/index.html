@@ -891,13 +891,23 @@ function renderSLA(v){
    <div class="card"><h4 class="mb12">SLA por categoria</h4><canvas id="c2" height="150"></canvas></div>
    <div class="card"><h4 class="mb12">Chamados por semana (canal)</h4><canvas id="c3" height="150"></canvas></div>
    <div class="card"><h4 class="mb12">Distribuição por categoria</h4><canvas id="c4" height="150"></canvas></div>
+ </div>
+ <div class="grid g2 mt16">
+   <div class="card"><h4 class="mb12"><i class="ti ti-clock-hour-4"></i> Tempo médio de resolução</h4><div class="statbig gradtext" id="slaTempo">…</div><div class="muted" style="font-size:12px">média dos últimos 6 meses (GLPI)</div></div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-award"></i> Top técnicos (resolvidos · 6 meses)</h4><div id="slaTecnicos"><div class="muted">…</div></div></div>
  </div>`;
  loadSLA();
 }
 let charts=[];
 async function loadSLA(){
  let d=null;try{const r=await api('/api/sla');if(r.ok)d=r.data;}catch(e){}
- if(CURRENT==='sla')buildCharts(d);
+ if(CURRENT!=='sla')return;buildCharts(d);fillSlaExtra(d);
+}
+function fillSlaExtra(d){
+ const tempo=document.getElementById('slaTempo');if(tempo)tempo.textContent=(d&&d.tempoMedioResolucao)||'—';
+ const tec=document.getElementById('slaTecnicos');if(!tec)return;
+ const a=(d&&d.topTecnicos)||[];const max=Math.max(1,...a.map(x=>x.total));
+ tec.innerHTML=a.length?a.map(x=>`<div class="mb12"><div class="flex" style="justify-content:space-between;font-size:13px"><span>${escapeHtml(x.nome||'—')}</span><span class="mono muted">${x.total}</span></div><div class="barh mt8"><i style="width:${Math.round(x.total/max*100)}%"></i></div></div>`).join(''):'<div class="muted">Sem dados no período</div>';
 }
 function buildCharts(d){
  charts.forEach(c=>c.destroy&&c.destroy());charts=[];
@@ -921,7 +931,13 @@ function renderLive(v){
  STATE.liveSeen=new Set();
  loadLive(true);
 }
-function liveIcon(t){return t==='exec'?{i:'ti-bolt',grad:true}:{i:'ti-ticket',c:'var(--p)'}}
+function liveIcon(t){return ({
+ exec:{i:'ti-bolt',grad:true},
+ abertura:{i:'ti-ticket',c:'var(--p)'},
+ novo:{i:'ti-ticket',c:'var(--s)'},
+ followup:{i:'ti-message-2',c:'var(--s)'},
+ tarefa:{i:'ti-checkbox',c:'#9db4ff'}
+})[t]||{i:'ti-activity',c:'var(--p)'}}
 function feedItem(e){const ic=liveIcon(e.type);const bg=ic.grad?'background:var(--g1)':'background:'+(ic.c||'var(--s)');
  return `<div class="tlitem" data-id="${e.id}"><div class="tdot" style="${bg}"><i class="ti ${ic.i}"></i></div><div class="tx">${e.msg}</div><div class="tm mono">${ovFmtAgo(e.at)}</div></div>`}
 async function loadLive(initial){
@@ -936,7 +952,7 @@ function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementByI
 function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;if(CURRENT==='live')loadLive(false)},12000)}
 function stopLive(){if(STATE.liveTimer)clearInterval(STATE.liveTimer)}
 
-const TCOLS=[['id','ID'],['sol','Solicitante'],['sigla','Setor'],['cat','Categoria'],['canal','Canal'],['status','Status'],['sla','SLA'],['assignee','Atribuído'],['aberto','Aberto']];
+const TCOLS=[['id','ID'],['sol','Solicitante'],['sigla','Setor'],['cat','Categoria'],['canal','Canal'],['status','Status'],['sla','SLA'],['assignee','Atribuído'],['entidade','Entidade'],['local','Local'],['grupoTecnico','Grupo téc.'],['aberto','Aberto']];
 function renderTickets(v){
  if(!STATE.ticketSort)STATE.ticketSort={field:'aberto',dir:'desc'};
  STATE.tfilter='';STATE.tstatus='';
@@ -944,20 +960,20 @@ function renderTickets(v){
  v.innerHTML=ph('Chamados','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
  `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar por ID, solicitante, categoria..." oninput="filterTickets(this.value)"></div>
    <select class="inp" style="width:auto" onchange="filterTicketsStatus(this.value)"><option value="">Todos status</option>${STATUSES.map(s=>`<option value="${s}">${STLABEL[s]}</option>`).join('')}</select></div>
- <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr>${ths}<th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr>${ths}<th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="13" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
  loadTickets().then(()=>{if(CURRENT==='tickets')paintTickets()});
 }
 function ticketsFiltered(){
  let d=ticketsForUser();
  if(STATE.tstatus)d=d.filter(t=>t.status===STATE.tstatus);
- if(STATE.tfilter){const q=STATE.tfilter;d=d.filter(t=>(''+t.id+' '+t.sol+' '+t.cat+' '+t.sector).toLowerCase().includes(q));}
+ if(STATE.tfilter){const q=STATE.tfilter;d=d.filter(t=>(''+t.id+' '+t.sol+' '+t.cat+' '+t.sector+' '+(t.entidade||'')+' '+(t.local||'')+' '+(t.grupoTecnico||'')).toLowerCase().includes(q));}
  const {field,dir}=STATE.ticketSort||{field:'aberto',dir:'desc'};
  const val=(t)=>field==='id'?t.id:field==='sla'?(t.sla==null?-1:t.sla):field==='aberto'?(t.abertoIso||''):(t[field]||'').toString().toLowerCase();
  return d.slice().sort((a,b)=>{const x=val(a),y=val(b);const r=x<y?-1:x>y?1:0;return dir==='asc'?r:-r;});
 }
 function paintTickets(){
  const data=ticketsFiltered();const b=document.getElementById('ttblBody');if(!b)return;
- b.innerHTML=data.length?data.map(ticketRow).join(''):'<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Nenhum chamado encontrado</td></tr>';
+ b.innerHTML=data.length?data.map(ticketRow).join(''):'<tr><td colspan="13" class="muted" style="padding:20px;text-align:center">Nenhum chamado encontrado</td></tr>';
  const h=document.querySelector('.page-head p');if(h)h.textContent=data.length+' chamados'+(effectiveProfile()==='gestor'?' do seu setor':'');
  const s=STATE.ticketSort||{};document.querySelectorAll('#ttbl .th-sort').forEach(th=>{const act=th.dataset.f===s.field;th.classList.toggle('act',act);th.querySelector('.ar').textContent=act?(s.dir==='asc'?'▲':'▼'):'';});
 }
@@ -969,7 +985,7 @@ function ticketRow(t){return `<tr data-id="${t.id}" onclick="openTicket(${t.id})
  <td class="mono">#${t.id}</td><td>${t.sol}</td><td>${t.sigla}</td><td>${t.cat}</td><td><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.canal}</td>
  <td><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span></td>
  <td><div class="barh" style="width:54px"><i style="width:${t.sla==null?100:t.sla}%;background:${slaColor(t.sla)}"></i></div></td>
- <td>${t.assignee}</td><td class="mono" style="font-size:11px">${t.abertoRel}</td>
+ <td>${t.assignee}</td><td>${t.entidade||'—'}</td><td>${t.local||'—'}</td><td>${t.grupoTecnico||'—'}</td><td class="mono" style="font-size:11px">${t.abertoRel}</td>
  <td class="actions-cell" onclick="event.stopPropagation()"><button class="iconbtn" onclick="openTicket(${t.id})"><i class="ti ti-eye"></i></button></td></tr>`}
 function filterTickets(q){STATE.tfilter=(q||'').toLowerCase();paintTickets()}
 function filterTicketsStatus(s){STATE.tstatus=s||'';paintTickets()}
@@ -997,7 +1013,8 @@ function ticketModalHtml(t,conv,ro,det,state){
    :det?tlRender(det.timeline)
    :`<div class="tl"><div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${escapeHtml(canal)}</div><div class="tm mono">${t.abertoFull||'—'}</div></div></div><div class="muted" style="font-size:11px;margin-top:6px">Não foi possível carregar a linha do tempo do GLPI.</div>`;
  const desc=det&&det.ticket.descricao?`<h4 class="mb12"><i class="ti ti-file-description"></i> Descrição</h4><div class="card sm" style="margin-bottom:14px;white-space:pre-wrap;font-size:13px;max-height:170px;overflow-y:auto">${escapeHtml(det.ticket.descricao)}</div>`:'';
- const extra=det?`<div class="kv"><span class="k">Urgência</span><span>${det.ticket.urgencia}</span></div><div class="kv"><span class="k">Impacto</span><span>${det.ticket.impacto}</span></div>`:'';
+ const extra=det?`<div class="kv"><span class="k">Urgência</span><span>${det.ticket.urgencia}</span></div><div class="kv"><span class="k">Impacto</span><span>${det.ticket.impacto}</span></div><div class="kv"><span class="k">Entidade</span><span>${escapeHtml(det.ticket.entidade)}</span></div><div class="kv"><span class="k">Local</span><span>${escapeHtml(det.ticket.local)}</span></div><div class="kv"><span class="k">Grupo técnico</span><span>${escapeHtml(det.ticket.grupoTecnico)}</span></div>`:'';
+ const anexos=det&&det.anexos&&det.anexos.length?`<h4 class="mb12"><i class="ti ti-paperclip"></i> Anexos (${det.anexos.length})</h4><div class="card sm" style="margin-bottom:14px">${det.anexos.map(a=>`<div class="kv"><span><i class="ti ti-file"></i> ${escapeHtml(a.nome)}</span><span class="muted mono" style="font-size:11px">${escapeHtml((a.mime||'').split('/').pop())}</span></div>`).join('')}</div>`:'';
  return `<div class="side-modal">
   <div class="mh"><div><div class="mono muted" style="font-size:12px">Chamado #${T.id}</div><h3 style="margin-top:2px">${escapeHtml(cat)}</h3><div class="msub">${escapeHtml(sol)} · ${escapeHtml(sector)}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
   <div class="flex wrap" style="gap:6px;margin:2px 0 16px"><span class="badge ${STBADGE[status]||'b-grey'}">${STLABEL[status]||status||'—'}</span><span class="badge b-grey">${prio}</span><span class="badge b-grey"><i class="ti ${CHICON[canal]||'ti-hand-finger'}"></i> ${canal}</span></div>
@@ -1015,6 +1032,7 @@ function ticketModalHtml(t,conv,ro,det,state){
     <div class="barh mt8" style="height:7px"><i style="width:${sla==null?100:sla}%;background:${slaColor(sla)}"></i></div></div>
   </div>
   ${desc}
+  ${anexos}
   <h4 class="mb12"><i class="ti ti-timeline"></i> Linha do tempo</h4>
   <div style="max-height:260px;overflow-y:auto;border:1px solid var(--brd);border-radius:12px;padding:14px 14px 2px;background:rgba(255,255,255,.02)">${tlHtml}</div>
   ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${T.id})</a>`:''}

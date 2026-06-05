@@ -1,5 +1,6 @@
 // GET /api/sla — séries prontas para os 4 gráficos da tela SLA & Métricas.
 import { slaMonthly, slaByCategory, distribution, weeklyTotals } from '../db/slaQueries.js';
+import { avgResolutionMin, topTecnicos } from '../db/glpiQueries.js';
 import { weeklyChannelLog } from '../db/overviewQueries.js';
 
 const MES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -9,13 +10,19 @@ const short = (c) => (c ? String(c).split('>').pop().trim() : 'Sem categoria');
 
 export default async function slaRoutes(fastify) {
   fastify.get('/api/sla', { preHandler: fastify.authenticate }, async () => {
-    const [monthly, byCat, dist, wkTotals, wkLog] = await Promise.all([
+    const now = new Date();
+    const start6 = new Date(now - 182 * 86400000);
+    const fmt = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+    const [monthly, byCat, dist, wkTotals, wkLog, tempoMedioMin, tecnicos] = await Promise.all([
       safe(slaMonthly(), []),
       safe(slaByCategory(), []),
       safe(distribution(), []),
       safe(weeklyTotals(), [0, 0, 0, 0]),
       safe(weeklyChannelLog(), { wa: [0, 0, 0, 0], form: [0, 0, 0, 0] }),
+      safe(avgResolutionMin(fmt(start6), fmt(now)), null),
+      safe(topTecnicos(fmt(start6), fmt(now)), []),
     ]);
+    const fmtDur = (min) => (min == null ? null : min < 60 ? `${min}min` : min < 1440 ? `${Math.floor(min / 60)}h ${min % 60}min` : `${Math.floor(min / 1440)}d ${Math.floor((min % 1440) / 60)}h`);
 
     // Evolução mensal do SLA
     const evolucao = {
@@ -43,6 +50,11 @@ export default async function slaRoutes(fastify) {
       manual: idx.map((w) => Math.max(0, (wkTotals[w] || 0) - wkLog.wa[w] - wkLog.form[w])),
     };
 
-    return { evolucao, categoria, distribuicao: distrib, semanal, generatedAt: new Date().toISOString() };
+    return {
+      evolucao, categoria, distribuicao: distrib, semanal,
+      tempoMedioResolucao: fmtDur(typeof tempoMedioMin === 'number' ? tempoMedioMin : null),
+      topTecnicos: Array.isArray(tecnicos) ? tecnicos : [],
+      generatedAt: new Date().toISOString(),
+    };
   });
 }

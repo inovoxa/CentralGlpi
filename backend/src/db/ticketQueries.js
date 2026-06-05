@@ -40,6 +40,12 @@ const SUB_ASSIGNEE = `(
   SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', ua.firstname, ua.realname)), ''), ua.name)
     FROM glpi_tickets_users tu2 JOIN glpi_users ua ON ua.id = tu2.users_id
    WHERE tu2.tickets_id = t.id AND tu2.type = 2 ORDER BY tu2.id LIMIT 1)`;
+const SUB_TECHGROUP = `(
+  SELECT g.name FROM glpi_groups_tickets gt JOIN glpi_groups g ON g.id = gt.groups_id
+   WHERE gt.tickets_id = t.id AND gt.type = 2 ORDER BY gt.id LIMIT 1)`;
+// Joins extras (entidade/localização) reusados na lista e no detalhe.
+const JOIN_EXTRA = `LEFT JOIN glpi_entities e ON e.id = t.entities_id
+                    LEFT JOIN glpi_locations l ON l.id = t.locations_id`;
 
 // Lista de tickets do GLPI. opts: { ids?, search?, limit, offset }.
 // Retorna { rows, total }. Se ids for [] (setor sem tickets), retorna vazio.
@@ -64,11 +70,13 @@ export async function listTickets({ ids = null, search = '', limit = 200, offset
   const rows = await glpiQuery(
     `SELECT t.id, t.name AS titulo, t.date AS date, t.status AS glpiStatus,
             t.priority AS priority, t.time_to_resolve AS ttr, t.solvedate AS solvedate,
-            c.completename AS categoria,
+            c.completename AS categoria, e.name AS entidade, l.completename AS local,
+            ${SUB_TECHGROUP} AS grupo_tecnico,
             ${SUB_REQUESTER} AS solicitante,
             ${SUB_ASSIGNEE}  AS assignee
        FROM glpi_tickets t
        LEFT JOIN glpi_itilcategories c ON c.id = t.itilcategories_id
+       ${JOIN_EXTRA}
       WHERE ${whereSql}
       ORDER BY t.date DESC
       LIMIT :lim OFFSET :off`,
@@ -87,11 +95,13 @@ export async function ticketDetail(id) {
     `SELECT t.id, t.name AS titulo, t.content, t.date, t.status AS glpiStatus,
             t.priority, t.urgency, t.impact, t.type AS tipo,
             t.time_to_resolve AS ttr, t.solvedate, t.closedate,
-            c.completename AS categoria,
+            c.completename AS categoria, e.name AS entidade, l.completename AS local,
+            ${SUB_TECHGROUP} AS grupo_tecnico,
             ${SUB_REQUESTER} AS solicitante,
             ${SUB_ASSIGNEE}  AS assignee
        FROM glpi_tickets t
        LEFT JOIN glpi_itilcategories c ON c.id = t.itilcategories_id
+       ${JOIN_EXTRA}
       WHERE t.id = :id AND t.is_deleted = 0
       LIMIT 1`,
     { id },
@@ -132,6 +142,18 @@ export async function ticketSolution(id) {
        FROM glpi_itilsolutions s
       WHERE s.itemtype = 'Ticket' AND s.items_id = :id
       ORDER BY s.date`,
+    { id },
+  );
+}
+
+// Anexos do ticket (documentos).
+export async function ticketDocuments(id) {
+  return glpiQuery(
+    `SELECT d.name, d.filename, d.mime
+       FROM glpi_documents_items di
+       JOIN glpi_documents d ON d.id = di.documents_id
+      WHERE di.itemtype = 'Ticket' AND di.items_id = :id
+      ORDER BY d.name`,
     { id },
   );
 }

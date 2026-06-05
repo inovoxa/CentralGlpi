@@ -1,7 +1,7 @@
 // Chamados e Kanban: lista (GLPI + chamados_log) e write-back de status (API v1).
 import {
   listTickets, ticketIdsBySector, enrichFromLog,
-  ticketDetail, ticketFollowups, ticketTasks, ticketSolution,
+  ticketDetail, ticketFollowups, ticketTasks, ticketSolution, ticketDocuments,
 } from '../db/ticketQueries.js';
 import { updateTicketStatus } from '../glpi/v1.js';
 import { logOperation } from '../db/audit.js';
@@ -58,6 +58,9 @@ function shape(row, enrich) {
     sla: slaPercent({ date: row.date, ttr: row.ttr, solvedate: row.solvedate }),
     assignee: row.assignee || '—',
     prio: priorityLabel(row.priority),
+    entidade: row.entidade || '—',
+    local: row.local || '—',
+    grupoTecnico: row.grupo_tecnico || '—',
     abertoIso: iso,
     abertoRel: relTime(iso),
     abertoFull: row.date ? fmtFull(row.date) : '',
@@ -96,8 +99,8 @@ export default async function ticketRoutes(fastify) {
     }
     if (!d) return reply.code(404).send({ error: 'chamado não encontrado' });
 
-    const [fups, tasks, sols, enrich] = await Promise.all([
-      safe(ticketFollowups(id)), safe(ticketTasks(id)), safe(ticketSolution(id)), enrichFromLog([id]).catch(() => ({})),
+    const [fups, tasks, sols, docs, enrich] = await Promise.all([
+      safe(ticketFollowups(id)), safe(ticketTasks(id)), safe(ticketSolution(id)), safe(ticketDocuments(id)), enrichFromLog([id]).catch(() => ({})),
     ]);
     const log = enrich[id] || {};
     const iso = (x) => (x ? new Date(x).toISOString() : null);
@@ -129,9 +132,13 @@ export default async function ticketRoutes(fastify) {
         prio: priorityLabel(d.priority),
         urgencia: nivel(d.urgency),
         impacto: nivel(d.impact),
+        entidade: d.entidade || '—',
+        local: d.local || '—',
+        grupoTecnico: d.grupo_tecnico || '—',
         sla: slaPercent({ date: d.date, ttr: d.ttr, solvedate: d.solvedate }),
         abertoFull: d.date ? fmtFull(d.date) : '—',
       },
+      anexos: arr(docs).map((x) => ({ nome: x.name || x.filename, arquivo: x.filename, mime: x.mime || '' })),
       timeline: tl,
     };
   });
