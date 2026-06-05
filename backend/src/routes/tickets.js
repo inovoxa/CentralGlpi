@@ -1,5 +1,8 @@
 // Chamados e Kanban: lista (GLPI + chamados_log) e write-back de status (API v1).
-import { listTickets, ticketIdsBySector, enrichFromLog } from '../db/ticketQueries.js';
+import {
+  listTickets, ticketIdsBySector, enrichFromLog,
+  ticketDetail, ticketFollowups, ticketTasks, ticketSolution,
+} from '../db/ticketQueries.js';
 import { updateTicketStatus } from '../glpi/v1.js';
 import { logOperation } from '../db/audit.js';
 import {
@@ -15,6 +18,16 @@ function fmtFull(d) {
   const x = new Date(d);
   return `${pad(x.getDate())}/${pad(x.getMonth() + 1)}/${x.getFullYear()} ${pad(x.getHours())}:${pad(x.getMinutes())}`;
 }
+// Remove HTML do conteúdo do GLPI (descrição/followups vêm com markup).
+function stripHtml(s) {
+  return String(s || '')
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\n{3,}/g, '\n\n').trim();
+}
+const NIVEL = { 1: 'Muito baixa', 2: 'Baixa', 3: 'Média', 4: 'Alta', 5: 'Muito alta', 6: 'Crítica' };
+const nivel = (n) => NIVEL[Number(n)] || '—';
+const arr = (v) => (Array.isArray(v) ? v : []);
 
 // Escopo de setor conforme RBAC: view_all => filtro opcional; view_sector => travado no próprio setor.
 function sectorScope(session, query, can) {
@@ -69,6 +82,58 @@ export default async function ticketRoutes(fastify) {
     const { rows, total } = await listTickets({ ids, search, limit });
     const enrich = await enrichFromLog(rows.map((r) => r.id));
     return { tickets: rows.map((r) => shape(r, enrich)), total, sector: scope.sector === '__none__' ? null : scope.sector };
+  });
+
+  // GET /api/tickets/:id — detalhe rico + linha do tempo real (GLPI MySQL).
+  fastify.get('/api/tickets/:id', { preHandler: fastify.authenticate }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return reply.code(400).send({ error: 'id inválido' });
+    const safe = (p) => p.then((v) => v).catch(() => null);
+
+    let d;
+    try { d = await ticketDetail(id); } catch (e) {
+      return reply.code(502).send({ error: 'falha ao ler o chamado no GLPI', detail: e.message });
+    }
+    if (!d) return reply.code(404).send({ error: 'chamado não encontrado' });
+
+    const [fups, tasks, sols, enrich] = await Promise.all([
+      safe(ticketFollowups(id)), safe(ticketTasks(id)), safe(ticketSolution(id)), enrichFromLog([id]).catch(() => ({})),
+    ]);
+    const log = enrich[id] || {};
+    const iso = (x) => (x ? new Date(x).toISOString() : null);
+
+    const tl = [];
+    if (d.date) tl.push({ tipo: 'abertura', when: iso(d.date), autor: d.solicitante || null, texto: 'Chamado aberto' });
+    for (const f of arr(fups)) tl.push({ tipo: 'followup', when: iso(f.date), autor: f.autor || null, texto: stripHtml(f.content) });
+    for (const t of arr(tasks)) tl.push({ tipo: 'tarefa', when: iso(t.date), autor: t.autor || null, texto: stripHtml(t.content) });
+    for (const s of arr(sols)) tl.push({ tipo: 'solucao', when: iso(s.date), autor: null, texto: stripHtml(s.content) });
+    if (d.solvedate) tl.push({ tipo: 'resolvido', when: iso(d.solvedate), texto: 'Chamado solucionado' });
+    if (d.closedate) tl.push({ tipo: 'fechado', when: iso(d.closedate), texto: 'Chamado fechado' });
+    tl.sort((a, b) => ((a.when || '') < (b.when || '') ? -1 : (a.when || '') > (b.when || '') ? 1 : 0));
+
+    const breached = isBreached({ glpiStatus: d.glpiStatus, ttr: d.ttr, solvedate: d.solvedate });
+    const status = breached ? 'violou_sla' : statusToColumn(d.glpiStatus);
+
+    return {
+      ticket: {
+        id: d.id,
+        titulo: d.titulo,
+        descricao: stripHtml(d.content),
+        sol: d.solicitante || '—',
+        assignee: d.assignee || '—',
+        sector: log.secretaria || '—',
+        canal: log.canal || 'Manual',
+        cat: d.categoria || 'Sem categoria',
+        status,
+        statusLabel: STLABEL[status],
+        prio: priorityLabel(d.priority),
+        urgencia: nivel(d.urgency),
+        impacto: nivel(d.impact),
+        sla: slaPercent({ date: d.date, ttr: d.ttr, solvedate: d.solvedate }),
+        abertoFull: d.date ? fmtFull(d.date) : '—',
+      },
+      timeline: tl,
+    };
   });
 
   // PATCH /api/tickets/:id/status — move card no Kanban -> grava status no GLPI (API v1).

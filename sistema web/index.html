@@ -973,45 +973,66 @@ function ticketRow(t){return `<tr data-id="${t.id}" onclick="openTicket(${t.id})
 function filterTickets(q){STATE.tfilter=(q||'').toLowerCase();paintTickets()}
 function filterTicketsStatus(s){STATE.tstatus=s||'';paintTickets()}
 
-function openTicket(id){const t=STATE.tickets.find(x=>x.id===id);if(!t)return;
- const conv=STATE.conversations.find(c=>c.ticket===id);
- const ro=effectiveProfile()==='auditor';
- const slaTxt=t.sla==null?'sem SLA definido':t.sla+'% restante';
- modal(`<div class="side-modal">
-  <div class="mh"><div><div class="mono muted" style="font-size:12px">Chamado #${t.id}</div><h3 style="margin-top:2px">${t.cat}</h3><div class="msub">${t.sol} · ${t.sector}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-  <div class="flex wrap" style="gap:6px;margin:2px 0 16px"><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span><span class="badge b-grey">${t.prio}</span><span class="badge b-grey"><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.canal}</span></div>
-
+function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function tlMeta(tipo){return ({
+ abertura:{i:'ti-plus',c:'var(--p)',l:'Abertura'},
+ followup:{i:'ti-message-2',c:'var(--s)',l:'Acompanhamento'},
+ tarefa:{i:'ti-checkbox',c:'#9db4ff',l:'Tarefa'},
+ solucao:{i:'ti-bulb',grad:true,l:'Solução'},
+ resolvido:{i:'ti-circle-check',c:'var(--ok)',l:'Resolvido'},
+ fechado:{i:'ti-lock',c:'var(--mut)',l:'Fechado'}
+})[tipo]||{i:'ti-point',c:'var(--mut)',l:''}}
+function tlRender(timeline){
+ if(!timeline||!timeline.length)return '<div class="muted" style="font-size:12px;padding:6px">Sem eventos registrados no GLPI</div>';
+ return '<div class="tl">'+timeline.map(e=>{const m=tlMeta(e.tipo);const bg=m.grad?'background:var(--g1)':'background:'+(m.c||'var(--mut)');
+  return `<div class="tlitem"><div class="tdot" style="${bg}"><i class="ti ${m.i}"></i></div><div class="tx">${e.texto?escapeHtml(e.texto).replace(/\n/g,'<br>'):m.l}${e.autor?` <span class="muted">— ${escapeHtml(e.autor)}</span>`:''}</div><div class="tm mono">${e.when?fmtDT(e.when):''}</div></div>`}).join('')+'</div>';
+}
+function ticketModalHtml(t,conv,ro,det,state){
+ const T=det?det.ticket:t;
+ const cat=T.cat||t.cat||'Chamado',sol=T.sol||t.sol||'—',sector=T.sector||t.sector||'—';
+ const status=T.status||t.status,prio=T.prio||t.prio||'—',canal=T.canal||t.canal||'—';
+ const sla=det?T.sla:t.sla;const slaTxt=sla==null?'sem SLA definido':sla+'% restante';
+ const tlHtml=state==='loading'?'<div class="muted" style="font-size:12px;padding:8px"><i class="ti ti-loader-2"></i> Carregando linha do tempo…</div>'
+   :det?tlRender(det.timeline)
+   :`<div class="tl"><div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${escapeHtml(canal)}</div><div class="tm mono">${t.abertoFull||'—'}</div></div></div><div class="muted" style="font-size:11px;margin-top:6px">Não foi possível carregar a linha do tempo do GLPI.</div>`;
+ const desc=det&&det.ticket.descricao?`<h4 class="mb12"><i class="ti ti-file-description"></i> Descrição</h4><div class="card sm" style="margin-bottom:14px;white-space:pre-wrap;font-size:13px;max-height:170px;overflow-y:auto">${escapeHtml(det.ticket.descricao)}</div>`:'';
+ const extra=det?`<div class="kv"><span class="k">Urgência</span><span>${det.ticket.urgencia}</span></div><div class="kv"><span class="k">Impacto</span><span>${det.ticket.impacto}</span></div>`:'';
+ return `<div class="side-modal">
+  <div class="mh"><div><div class="mono muted" style="font-size:12px">Chamado #${T.id}</div><h3 style="margin-top:2px">${escapeHtml(cat)}</h3><div class="msub">${escapeHtml(sol)} · ${escapeHtml(sector)}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+  <div class="flex wrap" style="gap:6px;margin:2px 0 16px"><span class="badge ${STBADGE[status]||'b-grey'}">${STLABEL[status]||status||'—'}</span><span class="badge b-grey">${prio}</span><span class="badge b-grey"><i class="ti ${CHICON[canal]||'ti-hand-finger'}"></i> ${canal}</span></div>
   <div class="card sm" style="margin-bottom:14px">
    <div class="grid g2" style="gap:0 18px">
-    <div class="kv"><span class="k">Solicitante</span><span>${t.sol}</span></div>
-    <div class="kv"><span class="k">Setor</span><span>${t.sector}</span></div>
-    <div class="kv"><span class="k">Atribuído</span><span>${t.assignee}</span></div>
-    <div class="kv"><span class="k">Prioridade</span><span>${t.prio}</span></div>
-    <div class="kv"><span class="k">Canal</span><span>${t.canal}</span></div>
-    <div class="kv"><span class="k">Aberto em</span><span class="mono" style="font-size:12px">${t.abertoFull||'—'}</span></div>
+    <div class="kv"><span class="k">Solicitante</span><span>${escapeHtml(sol)}</span></div>
+    <div class="kv"><span class="k">Setor</span><span>${escapeHtml(sector)}</span></div>
+    <div class="kv"><span class="k">Atribuído</span><span>${escapeHtml(T.assignee||t.assignee||'—')}</span></div>
+    <div class="kv"><span class="k">Prioridade</span><span>${prio}</span></div>
+    ${extra}
+    <div class="kv"><span class="k">Canal</span><span>${canal}</span></div>
+    <div class="kv"><span class="k">Aberto em</span><span class="mono" style="font-size:12px">${(det?det.ticket.abertoFull:t.abertoFull)||'—'}</span></div>
    </div>
-   <div class="mt16"><div class="flex" style="justify-content:space-between;font-size:12px"><span class="muted">SLA</span><span style="color:${slaColor(t.sla)}">${slaTxt}</span></div>
-    <div class="barh mt8" style="height:7px"><i style="width:${t.sla==null?100:t.sla}%;background:${slaColor(t.sla)}"></i></div></div>
+   <div class="mt16"><div class="flex" style="justify-content:space-between;font-size:12px"><span class="muted">SLA</span><span style="color:${slaColor(sla)}">${slaTxt}</span></div>
+    <div class="barh mt8" style="height:7px"><i style="width:${sla==null?100:sla}%;background:${slaColor(sla)}"></i></div></div>
   </div>
-
+  ${desc}
   <h4 class="mb12"><i class="ti ti-timeline"></i> Linha do tempo</h4>
-  <div style="max-height:240px;overflow-y:auto;border:1px solid var(--brd);border-radius:12px;padding:14px 14px 2px;background:rgba(255,255,255,.02)">
-   <div class="tl">
-    <div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${t.canal}</div><div class="tm mono">${t.abertoFull||'—'}</div></div>
-    <div class="tlitem"><div class="tdot" style="background:var(--s)"><i class="ti ti-checks"></i></div><div class="tx">Encaminhado para aprovação</div><div class="tm">${t.abertoRel||''}</div></div>
-    ${t.status==='em_execucao'||t.status==='resolvido'?'<div class="tlitem"><div class="tdot" style="background:var(--g1)"><i class="ti ti-bolt"></i></div><div class="tx">Execução no Active Directory iniciada</div><div class="tm">automático</div></div>':''}
-    ${t.status==='resolvido'?`<div class="tlitem"><div class="tdot" style="background:var(--ok)"><i class="ti ti-circle-check"></i></div><div class="tx">Chamado resolvido</div><div class="tm">${t.abertoRel||''}</div></div>`:''}
-    ${t.status==='violou_sla'?'<div class="tlitem"><div class="tdot" style="background:var(--err)"><i class="ti ti-alert-triangle"></i></div><div class="tx">SLA estourado — requer atenção</div><div class="tm">atenção</div></div>':''}
-   </div>
-  </div>
-  ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${id})</a>`:''}
+  <div style="max-height:260px;overflow-y:auto;border:1px solid var(--brd);border-radius:12px;padding:14px 14px 2px;background:rgba(255,255,255,.02)">${tlHtml}</div>
+  ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${T.id})</a>`:''}
   <div class="btnrow">
-   ${!ro&&can('approve')?`<button class="btn btn-grad btn-sm" onclick="ticketAction(${id},'Aprovado')"><i class="ti ti-check"></i> Aprovar</button>`:''}
-   ${!ro&&can('execute_ad')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Execução disparada')"><i class="ti ti-bolt"></i> Executar</button>`:''}
-   ${!ro&&can('update_status')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Encerrado')"><i class="ti ti-circle-check"></i> Encerrar</button>`:''}
+   ${!ro&&can('approve')?`<button class="btn btn-grad btn-sm" onclick="ticketAction(${T.id},'Aprovado')"><i class="ti ti-check"></i> Aprovar</button>`:''}
+   ${!ro&&can('execute_ad')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${T.id},'Execução disparada')"><i class="ti ti-bolt"></i> Executar</button>`:''}
+   ${!ro&&can('update_status')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${T.id},'Encerrado')"><i class="ti ti-circle-check"></i> Encerrar</button>`:''}
    ${ro?'<span class="muted" style="font-size:12px">Modo somente leitura</span>':''}
   </div>
- </div>`);
+ </div>`;
+}
+async function openTicket(id){
+ const t=STATE.tickets.find(x=>x.id===id)||{id,cat:'Chamado',sol:'—',sector:'—'};
+ const conv=STATE.conversations.find(c=>c.ticket===id);
+ const ro=effectiveProfile()==='auditor';
+ modal(ticketModalHtml(t,conv,ro,null,'loading'));
+ let det=null;try{const r=await api('/api/tickets/'+id);if(r.ok)det=r.data;}catch(e){}
+ // só re-renderiza se o modal deste chamado ainda estiver aberto
+ if(document.querySelector('#modalRoot .side-modal'))modal(ticketModalHtml(t,conv,ro,det,det?'ok':'fail'));
 }
 function ticketAction(id,a){logOp(a.toLowerCase()+' chamado #'+id,'ação manual');toast('#'+id+': '+a+' (simulado)');closeModal()}
 

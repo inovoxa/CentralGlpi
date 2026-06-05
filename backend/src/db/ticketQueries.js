@@ -80,3 +80,58 @@ export async function listTickets({ ids = null, search = '', limit = 200, offset
   );
   return { rows, total: Number(countRows[0]?.c || 0) };
 }
+
+// Detalhe completo de um ticket (GLPI MySQL).
+export async function ticketDetail(id) {
+  const rows = await glpiQuery(
+    `SELECT t.id, t.name AS titulo, t.content, t.date, t.status AS glpiStatus,
+            t.priority, t.urgency, t.impact, t.type AS tipo,
+            t.time_to_resolve AS ttr, t.solvedate, t.closedate,
+            c.completename AS categoria,
+            ${SUB_REQUESTER} AS solicitante,
+            ${SUB_ASSIGNEE}  AS assignee
+       FROM glpi_tickets t
+       LEFT JOIN glpi_itilcategories c ON c.id = t.itilcategories_id
+      WHERE t.id = :id AND t.is_deleted = 0
+      LIMIT 1`,
+    { id },
+  );
+  return rows[0] || null;
+}
+
+// Acompanhamentos (followups) do ticket.
+export async function ticketFollowups(id) {
+  return glpiQuery(
+    `SELECT f.date, f.content,
+            COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.firstname, u.realname)), ''), u.name) AS autor
+       FROM glpi_itilfollowups f
+       LEFT JOIN glpi_users u ON u.id = f.users_id
+      WHERE f.itemtype = 'Ticket' AND f.items_id = :id
+      ORDER BY f.date`,
+    { id },
+  );
+}
+
+// Tarefas do ticket.
+export async function ticketTasks(id) {
+  return glpiQuery(
+    `SELECT tt.date, tt.content, tt.state,
+            COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.firstname, u.realname)), ''), u.name) AS autor
+       FROM glpi_tickettasks tt
+       LEFT JOIN glpi_users u ON u.id = tt.users_id
+      WHERE tt.tickets_id = :id
+      ORDER BY tt.date`,
+    { id },
+  );
+}
+
+// Solução(ões) do ticket.
+export async function ticketSolution(id) {
+  return glpiQuery(
+    `SELECT s.date, s.content
+       FROM glpi_itilsolutions s
+      WHERE s.itemtype = 'Ticket' AND s.items_id = :id
+      ORDER BY s.date`,
+    { id },
+  );
+}
