@@ -130,6 +130,10 @@ th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;c
 td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;vertical-align:middle}
 tbody tr{transition:.2s}
 tbody tr:hover{background:rgba(255,255,255,.03)}
+.th-sort{cursor:pointer;user-select:none;white-space:nowrap;transition:color .2s}
+.th-sort:hover{color:var(--lt)}
+.th-sort .ar{font-size:10px;color:var(--p)}
+.th-sort.act{color:var(--p)}
 .tbl-wrap{overflow-x:auto;border-radius:12px}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--brd);border-radius:10px;padding:8px 12px;flex:1;min-width:200px}
@@ -142,11 +146,15 @@ select.inp{appearance:none;cursor:pointer}
 .actions-cell .iconbtn{width:30px;height:30px;font-size:17px;border-radius:8px}
 
 /* kanban */
-.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:13px;align-items:start}
-@media(max-width:1300px){.kanban{grid-template-columns:repeat(2,1fr)}}
-.kcol{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:14px;padding:11px;min-height:120px}
+.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:13px;align-items:start;height:calc(100vh - 230px);min-height:420px}
+@media(max-width:1300px){.kanban{grid-template-columns:repeat(2,1fr);height:auto}}
+.kcol{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:14px;padding:11px;display:flex;flex-direction:column;min-height:0;height:100%;border-top:3px solid var(--kc,var(--brd))}
+@media(max-width:1300px){.kcol{max-height:70vh}}
 .kcol.drag{border-color:var(--p);background:rgba(0,217,192,.06)}
-.kcol h4{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);display:flex;justify-content:space-between;margin-bottom:10px;padding:0 3px}
+.kcol h4{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);display:flex;align-items:center;gap:7px;justify-content:space-between;margin-bottom:10px;padding:0 3px;flex-shrink:0}
+.kcol h4 .kdot{width:8px;height:8px;border-radius:50%;background:var(--kc,var(--mut))}
+.kbody{overflow-y:auto;min-height:0;flex:1;padding-right:2px}
+.kbody::-webkit-scrollbar{width:7px}
 .kcard{background:var(--glass);border:1px solid var(--brd);border-radius:11px;padding:11px;margin-bottom:9px;cursor:grab;position:relative;overflow:hidden;transition:.2s}
 .kcard:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.3)}
 .kcard .slabar{position:absolute;left:0;top:0;bottom:0;width:3px}
@@ -846,14 +854,15 @@ function renderKanban(v){
  `<div class="kanban" id="kanban"><div class="empty" style="grid-column:1/-1"><i class="ti ti-loader-2"></i>Carregando chamados…</div></div>`;
  loadTickets().then(()=>{if(CURRENT==='kanban')paintKanban()});
 }
+const KCOLOR={aberto:'var(--s)',aguardando_aprovacao:'var(--warn)',em_execucao:'var(--p)',resolvido:'var(--ok)',violou_sla:'var(--err)'};
 function paintKanban(){
  const cols=[['aberto','Aberto'],['aguardando_aprovacao','Aguardando aprovação'],['em_execucao','Em execução'],['resolvido','Resolvido'],['violou_sla','Violou SLA']];
  const data=ticketsForUser();const el=document.getElementById('kanban');if(!el)return;
- el.innerHTML=cols.map(c=>`
-   <div class="kcol" data-st="${c[0]}" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="dropCard(event,'${c[0]}')">
-     <h4>${c[1]} <span class="badge b-grey">${data.filter(t=>t.status===c[0]).length}</span></h4>
-     ${data.filter(t=>t.status===c[0]).map(kcard).join('')||'<div class="muted" style="font-size:11px;padding:6px 3px">—</div>'}
-   </div>`).join('');
+ el.innerHTML=cols.map(c=>{const items=data.filter(t=>t.status===c[0]);const cor=KCOLOR[c[0]]||'var(--mut)';return `
+   <div class="kcol" style="--kc:${cor}" data-st="${c[0]}" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="dropCard(event,'${c[0]}')">
+     <h4><span class="flex center" style="gap:7px"><span class="kdot"></span>${c[1]}</span> <span class="badge b-grey">${items.length}</span></h4>
+     <div class="kbody">${items.map(kcard).join('')||'<div class="empty" style="padding:24px 6px"><i class="ti ti-inbox"></i>Vazio</div>'}</div>
+   </div>`}).join('');
 }
 function slaColor(s){if(s==null)return'var(--mut)';return s>60?'var(--ok)':s>30?'var(--warn)':'var(--err)'}
 function kcard(t){return `<div class="kcard" draggable="${can('move_kanban')}" data-id="${t.id}" ondragstart="event.dataTransfer.setData('id','${t.id}')" onclick="openTicket(${t.id})">
@@ -926,51 +935,81 @@ function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementByI
 function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;if(CURRENT==='live')loadLive(false)},12000)}
 function stopLive(){if(STATE.liveTimer)clearInterval(STATE.liveTimer)}
 
+const TCOLS=[['id','ID'],['sol','Solicitante'],['sigla','Setor'],['cat','Categoria'],['canal','Canal'],['status','Status'],['sla','SLA'],['assignee','Atribuído'],['aberto','Aberto']];
 function renderTickets(v){
+ if(!STATE.ticketSort)STATE.ticketSort={field:'aberto',dir:'desc'};
+ STATE.tfilter='';STATE.tstatus='';
+ const ths=TCOLS.map(c=>`<th class="th-sort" data-f="${c[0]}" onclick="sortTickets('${c[0]}')">${c[1]} <span class="ar"></span></th>`).join('');
  v.innerHTML=ph('Chamados','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
  `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar por ID, solicitante, categoria..." oninput="filterTickets(this.value)"></div>
    <select class="inp" style="width:auto" onchange="filterTicketsStatus(this.value)"><option value="">Todos status</option>${STATUSES.map(s=>`<option value="${s}">${STLABEL[s]}</option>`).join('')}</select></div>
- <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr><th>ID</th><th>Solicitante</th><th>Setor</th><th>Categoria</th><th>Canal</th><th>Status</th><th>SLA</th><th>Atribuído</th><th>Aberto</th><th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr>${ths}<th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
  loadTickets().then(()=>{if(CURRENT==='tickets')paintTickets()});
 }
+function ticketsFiltered(){
+ let d=ticketsForUser();
+ if(STATE.tstatus)d=d.filter(t=>t.status===STATE.tstatus);
+ if(STATE.tfilter){const q=STATE.tfilter;d=d.filter(t=>(''+t.id+' '+t.sol+' '+t.cat+' '+t.sector).toLowerCase().includes(q));}
+ const {field,dir}=STATE.ticketSort||{field:'aberto',dir:'desc'};
+ const val=(t)=>field==='id'?t.id:field==='sla'?(t.sla==null?-1:t.sla):field==='aberto'?(t.abertoIso||''):(t[field]||'').toString().toLowerCase();
+ return d.slice().sort((a,b)=>{const x=val(a),y=val(b);const r=x<y?-1:x>y?1:0;return dir==='asc'?r:-r;});
+}
 function paintTickets(){
- const data=ticketsForUser();const b=document.getElementById('ttblBody');if(!b)return;
+ const data=ticketsFiltered();const b=document.getElementById('ttblBody');if(!b)return;
  b.innerHTML=data.length?data.map(ticketRow).join(''):'<tr><td colspan="10" class="muted" style="padding:20px;text-align:center">Nenhum chamado encontrado</td></tr>';
  const h=document.querySelector('.page-head p');if(h)h.textContent=data.length+' chamados'+(effectiveProfile()==='gestor'?' do seu setor':'');
+ const s=STATE.ticketSort||{};document.querySelectorAll('#ttbl .th-sort').forEach(th=>{const act=th.dataset.f===s.field;th.classList.toggle('act',act);th.querySelector('.ar').textContent=act?(s.dir==='asc'?'▲':'▼'):'';});
 }
-function ticketRow(t){return `<tr data-id="${t.id}" data-st="${t.status}" data-s="${(t.id+t.sol+t.cat+t.sector).toLowerCase()}" onclick="openTicket(${t.id})" style="cursor:pointer">
+function sortTickets(field){const s=STATE.ticketSort||{field:'aberto',dir:'desc'};
+ if(s.field===field)s.dir=s.dir==='asc'?'desc':'asc';
+ else{s.field=field;s.dir=(field==='id'||field==='sla'||field==='aberto')?'desc':'asc';}
+ STATE.ticketSort=s;paintTickets();}
+function ticketRow(t){return `<tr data-id="${t.id}" onclick="openTicket(${t.id})" style="cursor:pointer">
  <td class="mono">#${t.id}</td><td>${t.sol}</td><td>${t.sigla}</td><td>${t.cat}</td><td><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.canal}</td>
  <td><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span></td>
  <td><div class="barh" style="width:54px"><i style="width:${t.sla==null?100:t.sla}%;background:${slaColor(t.sla)}"></i></div></td>
  <td>${t.assignee}</td><td class="mono" style="font-size:11px">${t.abertoRel}</td>
  <td class="actions-cell" onclick="event.stopPropagation()"><button class="iconbtn" onclick="openTicket(${t.id})"><i class="ti ti-eye"></i></button></td></tr>`}
-function filterTickets(q){q=q.toLowerCase();document.querySelectorAll('#ttbl tbody tr').forEach(r=>{r.style.display=(!q||r.dataset.s.includes(q))?'':'none'})}
-function filterTicketsStatus(s){document.querySelectorAll('#ttbl tbody tr').forEach(r=>{r.style.display=(!s||r.dataset.st===s)?'':'none'})}
+function filterTickets(q){STATE.tfilter=(q||'').toLowerCase();paintTickets()}
+function filterTicketsStatus(s){STATE.tstatus=s||'';paintTickets()}
 
 function openTicket(id){const t=STATE.tickets.find(x=>x.id===id);if(!t)return;
  const conv=STATE.conversations.find(c=>c.ticket===id);
+ const ro=effectiveProfile()==='auditor';
+ const slaTxt=t.sla==null?'sem SLA definido':t.sla+'% restante';
  modal(`<div class="side-modal">
-  <div class="mh"><div><div class="mono muted">#${t.id}</div><h3>${t.cat}</h3><div class="msub">${t.sol} · ${t.sector}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
-  <span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span> <span class="badge b-grey">${t.prio}</span> <span class="badge b-grey"><i class="ti ${CHICON[t.canal]}"></i> ${t.canal}</span>
-  <div class="mt16">
-   <div class="kv"><span class="k">Solicitante</span><span>${t.sol}</span></div>
-   <div class="kv"><span class="k">Setor</span><span>${t.sector}</span></div>
-   <div class="kv"><span class="k">Atribuído</span><span>${t.assignee}</span></div>
-   <div class="kv"><span class="k">SLA restante</span><span style="color:${slaColor(t.sla)}">${t.sla==null?'—':t.sla+'%'}</span></div>
-   <div class="kv"><span class="k">Aberto em</span><span class="mono">${t.abertoFull||'—'}</span></div>
+  <div class="mh"><div><div class="mono muted" style="font-size:12px">Chamado #${t.id}</div><h3 style="margin-top:2px">${t.cat}</h3><div class="msub">${t.sol} · ${t.sector}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+  <div class="flex wrap" style="gap:6px;margin:2px 0 16px"><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span><span class="badge b-grey">${t.prio}</span><span class="badge b-grey"><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.canal}</span></div>
+
+  <div class="card sm" style="margin-bottom:14px">
+   <div class="grid g2" style="gap:0 18px">
+    <div class="kv"><span class="k">Solicitante</span><span>${t.sol}</span></div>
+    <div class="kv"><span class="k">Setor</span><span>${t.sector}</span></div>
+    <div class="kv"><span class="k">Atribuído</span><span>${t.assignee}</span></div>
+    <div class="kv"><span class="k">Prioridade</span><span>${t.prio}</span></div>
+    <div class="kv"><span class="k">Canal</span><span>${t.canal}</span></div>
+    <div class="kv"><span class="k">Aberto em</span><span class="mono" style="font-size:12px">${t.abertoFull||'—'}</span></div>
+   </div>
+   <div class="mt16"><div class="flex" style="justify-content:space-between;font-size:12px"><span class="muted">SLA</span><span style="color:${slaColor(t.sla)}">${slaTxt}</span></div>
+    <div class="barh mt8" style="height:7px"><i style="width:${t.sla==null?100:t.sla}%;background:${slaColor(t.sla)}"></i></div></div>
   </div>
-  <h4 class="mt16 mb12">Timeline</h4>
-  <div class="tl">
-   <div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${t.canal}</div><div class="tm mono">${t.abertoFull||'—'}</div></div>
-   <div class="tlitem"><div class="tdot" style="background:var(--s)"><i class="ti ti-checks"></i></div><div class="tx">Encaminhado para aprovação</div><div class="tm">${t.abertoRel||''}</div></div>
-   ${t.status==='resolvido'||t.status==='em_execucao'?'<div class="tlitem"><div class="tdot" style="background:var(--g1)"><i class="ti ti-bolt"></i></div><div class="tx">Execução no Active Directory iniciada</div><div class="tm">automático</div></div>':''}
+
+  <h4 class="mb12"><i class="ti ti-timeline"></i> Linha do tempo</h4>
+  <div style="max-height:240px;overflow-y:auto;border:1px solid var(--brd);border-radius:12px;padding:14px 14px 2px;background:rgba(255,255,255,.02)">
+   <div class="tl">
+    <div class="tlitem"><div class="tdot" style="background:var(--p)"><i class="ti ti-plus"></i></div><div class="tx">Chamado aberto via ${t.canal}</div><div class="tm mono">${t.abertoFull||'—'}</div></div>
+    <div class="tlitem"><div class="tdot" style="background:var(--s)"><i class="ti ti-checks"></i></div><div class="tx">Encaminhado para aprovação</div><div class="tm">${t.abertoRel||''}</div></div>
+    ${t.status==='em_execucao'||t.status==='resolvido'?'<div class="tlitem"><div class="tdot" style="background:var(--g1)"><i class="ti ti-bolt"></i></div><div class="tx">Execução no Active Directory iniciada</div><div class="tm">automático</div></div>':''}
+    ${t.status==='resolvido'?`<div class="tlitem"><div class="tdot" style="background:var(--ok)"><i class="ti ti-circle-check"></i></div><div class="tx">Chamado resolvido</div><div class="tm">${t.abertoRel||''}</div></div>`:''}
+    ${t.status==='violou_sla'?'<div class="tlitem"><div class="tdot" style="background:var(--err)"><i class="ti ti-alert-triangle"></i></div><div class="tx">SLA estourado — requer atenção</div><div class="tm">atenção</div></div>':''}
+   </div>
   </div>
   ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${id})</a>`:''}
   <div class="btnrow">
-   ${can('approve')?`<button class="btn btn-grad btn-sm" onclick="ticketAction(${id},'Aprovado')"><i class="ti ti-check"></i> Aprovar</button>`:''}
-   ${can('execute_ad')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Execução disparada')"><i class="ti ti-bolt"></i> Executar</button>`:''}
-   ${can('update_status')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Encerrado')"><i class="ti ti-circle-check"></i> Encerrar</button>`:''}
-   ${effectiveProfile()==='auditor'?'<span class="muted" style="font-size:12px">Modo somente leitura</span>':''}
+   ${!ro&&can('approve')?`<button class="btn btn-grad btn-sm" onclick="ticketAction(${id},'Aprovado')"><i class="ti ti-check"></i> Aprovar</button>`:''}
+   ${!ro&&can('execute_ad')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Execução disparada')"><i class="ti ti-bolt"></i> Executar</button>`:''}
+   ${!ro&&can('update_status')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${id},'Encerrado')"><i class="ti ti-circle-check"></i> Encerrar</button>`:''}
+   ${ro?'<span class="muted" style="font-size:12px">Modo somente leitura</span>':''}
   </div>
  </div>`);
 }
@@ -1082,7 +1121,9 @@ async function loadAgente(){
  const hm=d.horasMensais||{labels:[],data:[]};
  if(window.__agChart&&window.__agChart.destroy)window.__agChart.destroy();
  Chart.defaults.color='rgba(248,249,250,.6)';
- window.__agChart=new Chart(document.getElementById('cAg'),{type:'bar',data:{labels:hm.labels,datasets:[{data:hm.data,backgroundColor:'#00D9C0',borderRadius:6}]},options:co({y:{display:false}})});
+ const agctx=document.getElementById('cAg').getContext('2d');const agg=agctx.createLinearGradient(0,0,0,120);agg.addColorStop(0,'rgba(0,217,192,.45)');agg.addColorStop(1,'rgba(0,217,192,0)');
+ const agopt=co({y:{display:false},x:{grid:{display:false}}});agopt.plugins.tooltip={callbacks:{label:c=>c.parsed.y+'h economizadas'}};
+ window.__agChart=new Chart(agctx,{type:'line',data:{labels:hm.labels,datasets:[{data:hm.data,borderColor:'#00D9C0',backgroundColor:agg,fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#00D9C0',pointHoverRadius:5}]},options:agopt});
 }
 
 function val(id){return (document.getElementById(id)||{}).value||''}
