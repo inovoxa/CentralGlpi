@@ -533,7 +533,8 @@ const NAV=[
  {g:'Operação',items:[
    {id:'tickets',t:'Chamados',i:'ti-ticket'},
    {id:'conversas',t:'Histórico de conversas',i:'ti-messages'},
-   {id:'agente',t:'Agente IA',i:'ti-robot'}]},
+   {id:'agente',t:'Agente IA',i:'ti-robot'},
+   {id:'aprovadores',t:'Aprovadores de chamado',i:'ti-user-shield',need:'view_audit'}]},
  {g:'Gestão',need:['manage_users','manage_sectors','config','manage_profiles'],items:[
    {id:'sysusers',t:'Usuários do sistema',i:'ti-users',need:'manage_users'},
    {id:'profiles',t:'Perfis e permissões',i:'ti-shield-lock',need:'manage_profiles'},
@@ -697,7 +698,7 @@ function navigate(id){
  CURRENT=id;setActiveNav();closeMenus();
  const v=document.getElementById('view');
  ({overview:renderOverview,kanban:renderKanban,sla:renderSLA,live:renderLive,tickets:renderTickets,
-   conversas:renderConversas,agente:renderAgente,sysusers:renderSysUsers,profiles:renderProfiles,
+   conversas:renderConversas,agente:renderAgente,aprovadores:renderAprovadores,sysusers:renderSysUsers,profiles:renderProfiles,
    sectors:renderSectors,config:renderConfig,accesslogs:renderAccessLogs,oplogs:renderOpLogs,
    reports:renderReports,myprofile:renderMyProfile}[id]||renderOverview)(v);
  v.scrollTop=0;document.querySelector('.content').scrollTop=0;
@@ -1018,7 +1019,6 @@ function ticketModalHtml(t,conv,ro,det,state){
   <div style="max-height:260px;overflow-y:auto;border:1px solid var(--brd);border-radius:12px;padding:14px 14px 2px;background:rgba(255,255,255,.02)">${tlHtml}</div>
   ${conv?`<a class="linklike mt16" style="display:inline-block" onclick="closeModal();navigate('conversas');setTimeout(()=>selectConv(${conv.id}),60)"><i class="ti ti-message"></i> Ver conversa que originou (#${T.id})</a>`:''}
   <div class="btnrow">
-   ${!ro&&can('approve')?`<button class="btn btn-grad btn-sm" onclick="ticketAction(${T.id},'Aprovado')"><i class="ti ti-check"></i> Aprovar</button>`:''}
    ${!ro&&can('execute_ad')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${T.id},'Execução disparada')"><i class="ti ti-bolt"></i> Executar</button>`:''}
    ${!ro&&can('update_status')?`<button class="btn btn-line btn-sm" onclick="ticketAction(${T.id},'Encerrado')"><i class="ti ti-circle-check"></i> Encerrar</button>`:''}
    ${ro?'<span class="muted" style="font-size:12px">Modo somente leitura</span>':''}
@@ -1147,6 +1147,42 @@ async function loadAgente(){
  window.__agChart=new Chart(agctx,{type:'line',data:{labels:hm.labels,datasets:[{data:hm.data,borderColor:'#00D9C0',backgroundColor:agg,fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#00D9C0',pointHoverRadius:5}]},options:agopt});
 }
 
+function renderAprovadores(v){
+ v.innerHTML=ph('Aprovadores de chamado','Grupo do AD “Aprovadores GLPI” — usuários que podem aprovar chamados no GLPI',
+   `<button class="btn btn-grad btn-sm" onclick="openAddAprovador()"><i class="ti ti-user-plus"></i> Adicionar</button>`)+
+ `<div id="aprovWrap"><div class="muted" style="padding:10px">Carregando…</div></div>`;
+ loadAprovadores();
+}
+async function loadAprovadores(){
+ let d=null;try{const r=await api('/api/aprovadores');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='aprovadores')return;const el=document.getElementById('aprovWrap');if(!el)return;
+ if(!d){el.innerHTML='<div class="empty"><i class="ti ti-plug-connected-x"></i>Não foi possível consultar o AD</div>';return;}
+ if(d.configured===false){el.innerHTML='<div class="empty"><i class="ti ti-plug-connected-x"></i>Conexão de AD não configurada<div class="mt8 muted">Defina AD_SSH_* no backend</div></div>';return;}
+ const m=d.membros||[];
+ const h=document.querySelector('.page-head p');if(h)h.textContent='Grupo “'+(d.grupo||'Aprovadores GLPI')+'” · '+m.length+' usuário(s) no AD';
+ el.innerHTML=`<div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>Login (AD)</th><th>Nome</th><th>Departamento</th><th>Status</th><th></th></tr></thead><tbody>
+  ${m.length?m.map(u=>`<tr><td class="mono">${escapeHtml(u.login)}</td><td>${escapeHtml(u.nome||'—')}</td><td>${escapeHtml(u.departamento||'—')}</td><td>${u.habilitado===false?'<span class="badge b-grey">desabilitado</span>':'<span class="badge b-green">ativo</span>'}</td>
+   <td class="actions-cell"><button class="iconbtn" title="Remover do grupo no AD" onclick="removerAprovador('${escapeHtml(u.login)}')"><i class="ti ti-user-minus"></i></button></td></tr>`).join(''):'<tr><td colspan="5" class="muted" style="padding:20px;text-align:center">Nenhum aprovador no grupo</td></tr>'}
+ </tbody></table></div>
+ <div class="muted mt16" style="font-size:12px"><i class="ti ti-info-circle"></i> Adicionar/remover aqui altera diretamente o grupo no Active Directory.</div>`;
+}
+function openAddAprovador(){modal(`<div class="modal"><div class="mh"><h3>Adicionar aprovador</h3><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ <p class="muted mb12" style="font-size:13px">Login (samAccountName) do usuário do AD a incluir no grupo <b>Aprovadores GLPI</b>.</p>
+ <div class="field"><label>Login do AD</label><input class="inp" id="apLogin" placeholder="ex.: jsilva" onkeydown="if(event.key==='Enter')adicionarAprovador()"></div>
+ <div class="btnrow"><button class="btn btn-grad" id="apBtn" onclick="adicionarAprovador()">Adicionar ao grupo</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+async function adicionarAprovador(){
+ const login=(val('apLogin')||'').trim();if(!login){toast('Informe o login');return;}
+ const btn=document.getElementById('apBtn');if(btn)btn.disabled=true;
+ try{const {ok,data}=await api('/api/aprovadores',{method:'POST',body:JSON.stringify({login})});
+  if(!ok)throw new Error(data.error||'falha');closeModal();toast('Aprovador adicionado no AD');loadAprovadores();
+ }catch(e){toast('Erro: '+e.message);if(btn)btn.disabled=false}
+}
+async function removerAprovador(login){
+ if(!confirm('Remover “'+login+'” do grupo Aprovadores GLPI no AD?'))return;
+ try{const {ok,data}=await api('/api/aprovadores/'+encodeURIComponent(login),{method:'DELETE'});
+  if(!ok)throw new Error(data.error||'falha');toast('Removido do AD');loadAprovadores();
+ }catch(e){toast('Erro: '+e.message)}
+}
 function val(id){return (document.getElementById(id)||{}).value||''}
 function renderSysUsers(v){
  v.innerHTML=ph('Usuários do sistema','Carregando…',`<button class="btn btn-grad btn-sm" onclick="openNewUser()"><i class="ti ti-plus"></i> Novo usuário</button>`)+
@@ -1362,7 +1398,7 @@ function pwStrength(v){let s=0;if(v.length>=12)s++;if(/[A-Z]/.test(v))s++;if(/[0
 /* ===================== UTIL ===================== */
 function toast(msg){const w=document.getElementById('toasts');const el=document.createElement('div');el.className='toast';el.innerHTML=`<i class="ti ti-circle-check"></i><span>${msg}</span>`;w.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transition='.4s';setTimeout(()=>el.remove(),400)},3200)}
 function logOp(acao,delta){STATE.operationLogs.unshift({d:new Date(),user:STATE.currentUser.nome,profile:PROFILES[STATE.currentUser.profile].name,acao,delta,ip:'10.10.2.14'})}
-function startClock(){const c=document.getElementById('clock');const t=new Date(NOW);setInterval(()=>{t.setSeconds(t.getSeconds()+1);c.textContent=fmtDate(t).split(' ')[1]+':'+pad(t.getSeconds())},1000);c.textContent=fmtDate(t).split(' ')[1]+':00'}
+function startClock(){const c=document.getElementById('clock');if(!c)return;const tick=()=>{const t=new Date();c.textContent=pad(t.getHours())+':'+pad(t.getMinutes())+':'+pad(t.getSeconds())};tick();if(STATE.clockTimer)clearInterval(STATE.clockTimer);STATE.clockTimer=setInterval(tick,1000)}
 
 document.getElementById('lgPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 
