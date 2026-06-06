@@ -7,8 +7,14 @@ export function adEnabled() {
   return !!config.ad.host;
 }
 
+// Normaliza o usuário: colapsa barras invertidas duplicadas (DOMINIO\\user -> DOMINIO\user).
+// Alguns ambientes (ex.: Coolify) dobram a "\" ao injetar a variável; isso quebra o login.
+function normalizeUser(u) {
+  return String(u || '').replace(/\\+/g, '\\').trim();
+}
+
 function connectOpts() {
-  const o = { host: config.ad.host, port: config.ad.port, username: config.ad.user, readyTimeout: 15000 };
+  const o = { host: config.ad.host, port: config.ad.port, username: normalizeUser(config.ad.user), readyTimeout: 15000 };
   if (config.ad.privateKeyPath) o.privateKey = fs.readFileSync(config.ad.privateKeyPath);
   else if (config.ad.password) o.password = config.ad.password;
   return o;
