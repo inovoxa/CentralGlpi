@@ -3,21 +3,22 @@ import { glpiQuery } from './mysql.js';
 
 const pct = (ok, com) => (com > 0 ? Math.round((ok / com) * 100) : null);
 
-// Evolução do SLA por mês (últimos 6 meses).
-export async function slaMonthly() {
+// Evolução diária do SLA na janela [start, end).
+export async function slaTrend(start, end) {
   const rows = await glpiQuery(
-    `SELECT DATE_FORMAT(date,'%Y-%m') AS ym,
+    `SELECT DATE(date) AS d,
             SUM(time_to_resolve IS NOT NULL AND solvedate IS NOT NULL) AS com,
             SUM(time_to_resolve IS NOT NULL AND solvedate IS NOT NULL AND solvedate <= time_to_resolve) AS ok
        FROM glpi_tickets
-      WHERE is_deleted = 0 AND date >= (CURDATE() - INTERVAL 6 MONTH)
-      GROUP BY ym ORDER BY ym`,
+      WHERE is_deleted = 0 AND date >= :start AND date < :end
+      GROUP BY d ORDER BY d`,
+    { start, end },
   );
-  return rows.map((r) => ({ ym: r.ym, pct: pct(Number(r.ok), Number(r.com)) }));
+  return rows.map((r) => ({ d: r.d, pct: pct(Number(r.ok), Number(r.com)) }));
 }
 
-// % de SLA por categoria (top 6 por volume).
-export async function slaByCategory() {
+// % de SLA por categoria (top 6 por volume) na janela.
+export async function slaByCategory(start, end) {
   const rows = await glpiQuery(
     `SELECT COALESCE(c.completename,'Sem categoria') AS cat,
             SUM(t.time_to_resolve IS NOT NULL AND t.solvedate IS NOT NULL) AS com,
@@ -25,20 +26,22 @@ export async function slaByCategory() {
             COUNT(*) AS total
        FROM glpi_tickets t
        LEFT JOIN glpi_itilcategories c ON c.id = t.itilcategories_id
-      WHERE t.is_deleted = 0 AND t.date >= (CURDATE() - INTERVAL 6 MONTH)
+      WHERE t.is_deleted = 0 AND t.date >= :start AND t.date < :end
       GROUP BY cat HAVING com > 0 ORDER BY total DESC LIMIT 6`,
+    { start, end },
   );
   return rows.map((r) => ({ cat: r.cat, pct: pct(Number(r.ok), Number(r.com)) }));
 }
 
-// Distribuição de chamados por categoria (para a rosca).
-export async function distribution() {
+// Distribuição de chamados por categoria (rosca) na janela.
+export async function distribution(start, end) {
   const rows = await glpiQuery(
     `SELECT COALESCE(c.completename,'Sem categoria') AS cat, COUNT(*) AS total
        FROM glpi_tickets t
        LEFT JOIN glpi_itilcategories c ON c.id = t.itilcategories_id
-      WHERE t.is_deleted = 0 AND t.date >= (CURDATE() - INTERVAL 6 MONTH)
+      WHERE t.is_deleted = 0 AND t.date >= :start AND t.date < :end
       GROUP BY cat ORDER BY total DESC`,
+    { start, end },
   );
   return rows.map((r) => ({ cat: r.cat, total: Number(r.total) }));
 }

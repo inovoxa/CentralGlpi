@@ -1,9 +1,12 @@
-// GET /api/agente — métricas e ROI estimado da automação conversacional.
+// GET /api/agente?period=7d|30d|90d — métricas e ROI estimado da automação.
 import { config } from '../config.js';
-import { monthStats, operacoesPorTipo, execMensal } from '../db/agenteQueries.js';
+import { periodStats, operacoesPorTipo, execDiario } from '../db/agenteQueries.js';
 
-const MES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const DAYS = { '7d': 7, '30d': 30, '90d': 90 };
+const DAY_MS = 86_400_000;
 async function safe(p, fb) { try { return await p; } catch { return fb; } }
+const pad = (n) => String(n).padStart(2, '0');
+const ddmm = (s) => { const d = new Date(s + 'T00:00:00'); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; };
 
 function fmtDur(seg) {
   if (seg == null) return '—';
@@ -12,11 +15,14 @@ function fmtDur(seg) {
 }
 
 export default async function agenteRoutes(fastify) {
-  fastify.get('/api/agente', { preHandler: fastify.authenticate }, async () => {
-    const [ms, ops, exMes] = await Promise.all([
-      safe(monthStats(), { total: 0, conversas: 0, automated: 0, avgSeg: null }),
-      safe(operacoesPorTipo(), []),
-      safe(execMensal(), []),
+  fastify.get('/api/agente', { preHandler: fastify.authenticate }, async (req) => {
+    const period = DAYS[req.query.period] ? req.query.period : '7d';
+    const startIso = new Date(Date.now() - DAYS[period] * DAY_MS).toISOString();
+
+    const [ms, ops, diario] = await Promise.all([
+      safe(periodStats(startIso), { total: 0, conversas: 0, automated: 0, avgSeg: null }),
+      safe(operacoesPorTipo(startIso), []),
+      safe(execDiario(startIso), []),
     ]);
 
     const { minPorOp, custoHora } = config.agente;
@@ -24,6 +30,7 @@ export default async function agenteRoutes(fastify) {
     const semHumanoPct = ms.total ? Math.round((ms.automated / ms.total) * 100) : null;
 
     return {
+      period,
       cards: {
         conversas: ms.conversas,
         semHumanoPct,
@@ -33,8 +40,8 @@ export default async function agenteRoutes(fastify) {
       operacoes: ops,
       roi: { horas, economia: horas * custoHora, minPorOp, custoHora },
       horasMensais: {
-        labels: exMes.map((m) => MES[Number(m.ym.split('-')[1]) - 1] || m.ym),
-        data: exMes.map((m) => Math.round((m.total * minPorOp) / 60)),
+        labels: diario.map((x) => ddmm(x.dia)),
+        data: diario.map((x) => Math.round((x.total * minPorOp) / 60)),
       },
       generatedAt: new Date().toISOString(),
     };

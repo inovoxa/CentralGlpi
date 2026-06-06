@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Central de Operações GLPI · Prefeitura de Araraquara</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2300D9C0'/%3E%3Ctext x='16' y='23' font-size='20' font-weight='bold' font-family='Arial,sans-serif' fill='%23062b27' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -885,22 +886,26 @@ async function dropCard(e,st){e.preventDefault();document.querySelectorAll('.kco
 function filterKanban(q){q=q.toLowerCase();document.querySelectorAll('.kcard').forEach(c=>{const t=STATE.tickets.find(x=>x.id==c.dataset.id);c.style.display=(!q||(''+t.id+t.cat+t.sol).toLowerCase().includes(q))?'':'none'})}
 
 function renderSLA(v){
- v.innerHTML=ph('SLA & Métricas','Indicadores de desempenho do atendimento',`<button class="btn btn-line btn-sm" onclick="${can('export')?'openExport()':'toast(\'Sem permissão para exportar\')'}"><i class="ti ti-file-export"></i> Exportar PDF</button>`)+
+ if(!STATE.slaPeriod)STATE.slaPeriod='30d';
+ v.innerHTML=ph('SLA & Métricas','Indicadores de desempenho do atendimento',
+  `<div class="seg">${['7d','30d','90d'].map(p=>`<button class="${p===STATE.slaPeriod?'on':''}" onclick="setSlaPeriod('${p}',this)">${p}</button>`).join('')}</div>
+   <button class="btn btn-line btn-sm" onclick="${can('export')?'openExport()':'toast(\'Sem permissão para exportar\')'}"><i class="ti ti-file-export"></i> Exportar PDF</button>`)+
  `<div class="grid g2">
-   <div class="card"><h4 class="mb12">Evolução do SLA mensal</h4><canvas id="c1" height="150"></canvas></div>
-   <div class="card"><h4 class="mb12">SLA por categoria</h4><canvas id="c2" height="150"></canvas></div>
-   <div class="card"><h4 class="mb12">Chamados por semana (canal)</h4><canvas id="c3" height="150"></canvas></div>
-   <div class="card"><h4 class="mb12">Distribuição por categoria</h4><canvas id="c4" height="150"></canvas></div>
+   <div class="card"><h4 class="mb12">Evolução do SLA (período)</h4><div style="position:relative;height:200px"><canvas id="c1"></canvas></div></div>
+   <div class="card"><h4 class="mb12">SLA por categoria</h4><div style="position:relative;height:200px"><canvas id="c2"></canvas></div></div>
+   <div class="card"><h4 class="mb12">Chamados por semana (canal)</h4><div style="position:relative;height:200px"><canvas id="c3"></canvas></div></div>
+   <div class="card"><h4 class="mb12">Distribuição por categoria</h4><div style="position:relative;height:200px"><canvas id="c4"></canvas></div></div>
  </div>
  <div class="grid g2 mt16">
-   <div class="card"><h4 class="mb12"><i class="ti ti-clock-hour-4"></i> Tempo médio de resolução</h4><div class="statbig gradtext" id="slaTempo">…</div><div class="muted" style="font-size:12px">média dos últimos 6 meses (GLPI)</div></div>
-   <div class="card"><h4 class="mb12"><i class="ti ti-award"></i> Top técnicos (resolvidos · 6 meses)</h4><div id="slaTecnicos"><div class="muted">…</div></div></div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-clock-hour-4"></i> Tempo médio de resolução</h4><div class="statbig gradtext" id="slaTempo">…</div><div class="muted" style="font-size:12px">no período (GLPI)</div></div>
+   <div class="card"><h4 class="mb12"><i class="ti ti-award"></i> Top técnicos (resolvidos)</h4><div id="slaTecnicos"><div class="muted">…</div></div></div>
  </div>`;
  loadSLA();
 }
+function setSlaPeriod(p,btn){STATE.slaPeriod=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}loadSLA();}
 let charts=[];
 async function loadSLA(){
- let d=null;try{const r=await api('/api/sla');if(r.ok)d=r.data;}catch(e){}
+ let d=null;try{const r=await api('/api/sla?period='+(STATE.slaPeriod||'30d'));if(r.ok)d=r.data;}catch(e){}
  if(CURRENT!=='sla')return;buildCharts(d);fillSlaExtra(d);
 }
 function fillSlaExtra(d){
@@ -952,7 +957,7 @@ function togglePause(){STATE.paused=!STATE.paused;const b=document.getElementByI
 function startLive(){stopLive();STATE.liveTimer=setInterval(()=>{if(STATE.paused)return;if(CURRENT==='live')loadLive(false)},12000)}
 function stopLive(){if(STATE.liveTimer)clearInterval(STATE.liveTimer)}
 
-const TCOLS=[['id','ID'],['sol','Solicitante'],['sigla','Setor'],['cat','Categoria'],['canal','Canal'],['status','Status'],['sla','SLA'],['assignee','Atribuído'],['entidade','Entidade'],['local','Local'],['grupoTecnico','Grupo téc.'],['aberto','Aberto']];
+const TCOLS=[['id','ID'],['sol','Solicitante'],['sigla','Setor'],['cat','Categoria'],['canal','Canal'],['status','Status'],['sla','SLA'],['assignee','Atribuído'],['local','Local'],['grupoTecnico','Grupo téc.'],['aberto','Aberto']];
 function renderTickets(v){
  if(!STATE.ticketSort)STATE.ticketSort={field:'aberto',dir:'desc'};
  STATE.tfilter='';STATE.tstatus='';
@@ -960,7 +965,7 @@ function renderTickets(v){
  v.innerHTML=ph('Chamados','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
  `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar por ID, solicitante, categoria..." oninput="filterTickets(this.value)"></div>
    <select class="inp" style="width:auto" onchange="filterTicketsStatus(this.value)"><option value="">Todos status</option>${STATUSES.map(s=>`<option value="${s}">${STLABEL[s]}</option>`).join('')}</select></div>
- <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr>${ths}<th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="13" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
+ <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr>${ths}<th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="12" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;
  loadTickets().then(()=>{if(CURRENT==='tickets')paintTickets()});
 }
 function ticketsFiltered(){
@@ -973,7 +978,7 @@ function ticketsFiltered(){
 }
 function paintTickets(){
  const data=ticketsFiltered();const b=document.getElementById('ttblBody');if(!b)return;
- b.innerHTML=data.length?data.map(ticketRow).join(''):'<tr><td colspan="13" class="muted" style="padding:20px;text-align:center">Nenhum chamado encontrado</td></tr>';
+ b.innerHTML=data.length?data.map(ticketRow).join(''):'<tr><td colspan="12" class="muted" style="padding:20px;text-align:center">Nenhum chamado encontrado</td></tr>';
  const h=document.querySelector('.page-head p');if(h)h.textContent=data.length+' chamados'+(effectiveProfile()==='gestor'?' do seu setor':'');
  const s=STATE.ticketSort||{};document.querySelectorAll('#ttbl .th-sort').forEach(th=>{const act=th.dataset.f===s.field;th.classList.toggle('act',act);th.querySelector('.ar').textContent=act?(s.dir==='asc'?'▲':'▼'):'';});
 }
@@ -985,7 +990,7 @@ function ticketRow(t){return `<tr data-id="${t.id}" onclick="openTicket(${t.id})
  <td class="mono">#${t.id}</td><td>${t.sol}</td><td>${t.sigla}</td><td>${t.cat}</td><td><i class="ti ${CHICON[t.canal]||'ti-hand-finger'}"></i> ${t.canal}</td>
  <td><span class="badge ${STBADGE[t.status]}">${STLABEL[t.status]}</span></td>
  <td><div class="barh" style="width:54px"><i style="width:${t.sla==null?100:t.sla}%;background:${slaColor(t.sla)}"></i></div></td>
- <td>${t.assignee}</td><td>${t.entidade||'—'}</td><td>${t.local||'—'}</td><td>${t.grupoTecnico||'—'}</td><td class="mono" style="font-size:11px">${t.abertoRel}</td>
+ <td>${t.assignee}</td><td>${t.local||'—'}</td><td>${t.grupoTecnico||'—'}</td><td class="mono" style="font-size:11px">${t.abertoRel}</td>
  <td class="actions-cell" onclick="event.stopPropagation()"><button class="iconbtn" onclick="openTicket(${t.id})"><i class="ti ti-eye"></i></button></td></tr>`}
 function filterTickets(q){STATE.tfilter=(q||'').toLowerCase();paintTickets()}
 function filterTicketsStatus(s){STATE.tstatus=s||'';paintTickets()}
@@ -1128,28 +1133,31 @@ function bubble(m){
  return `<div class="bubble ${cls}">${who}${body}<div class="bt mono">${m.time}</div></div>`}
 
 function renderAgente(v){
- v.innerHTML=ph('Agente IA','Desempenho da automação conversacional',`<button class="btn btn-line btn-sm" onclick="toast('Relatório mensal gerado (simulado)')"><i class="ti ti-report"></i> Gerar relatório mensal</button>`)+
+ if(!STATE.agPeriod)STATE.agPeriod='7d';
+ v.innerHTML=ph('Agente IA','Desempenho da automação conversacional',
+  `<div class="seg">${['7d','30d','90d'].map(p=>`<button class="${p===STATE.agPeriod?'on':''}" onclick="setAgPeriod('${p}',this)">${p}</button>`).join('')}</div>`)+
  `<div class="grid g4">
-   ${agStat('agConversas','conversas com chamado (mês)','ti-messages')}${agStat('agSemHumano','resolvidas sem humano','ti-robot')}${agStat('agTempo','tempo médio de execução','ti-clock')}${agStat('agExec','execuções AD (mês)','ti-bolt')}
+   ${agStat('agConversas','conversas no período','ti-messages')}${agStat('agSemHumano','resolvidas sem humano','ti-robot')}${agStat('agTempo','tempo médio de execução','ti-clock')}${agStat('agExec','execuções AD','ti-bolt')}
  </div>
  <div class="grid g2 mt16">
-  <div class="card"><h4 class="mb12">Operações por tipo (6 meses)</h4><div id="agOps"><div class="muted">Carregando…</div></div></div>
+  <div class="card"><h4 class="mb12">Operações por tipo (período)</h4><div id="agOps"><div class="muted">Carregando…</div></div></div>
   <div class="card" style="background:linear-gradient(135deg,rgba(0,217,192,.1),rgba(91,127,222,.08))">
    <h4 class="mb12">Retorno (ROI) estimado</h4>
    <div class="grid g2">
-    <div><div class="statbig gradtext" id="agHoras">…</div><div class="muted" style="font-size:12px">horas economizadas / mês</div></div>
-    <div><div class="statbig gradtext" id="agEconomia">…</div><div class="muted" style="font-size:12px">economia estimada / mês</div></div>
+    <div><div class="statbig gradtext" id="agHoras">…</div><div class="muted" style="font-size:12px">horas economizadas</div></div>
+    <div><div class="statbig gradtext" id="agEconomia">…</div><div class="muted" style="font-size:12px">economia estimada</div></div>
     <div><div class="statbig" id="agManual">…</div><div class="muted" style="font-size:12px">resolvido pela IA</div></div>
-    <div><div class="statbig" id="agOpsMes">…</div><div class="muted" style="font-size:12px">operações no mês</div></div>
+    <div><div class="statbig" id="agOpsMes">…</div><div class="muted" style="font-size:12px">operações no período</div></div>
    </div>
-   <h4 class="mt16 mb12">Horas economizadas (mês a mês)</h4><canvas id="cAg" height="90"></canvas>
+   <h4 class="mt16 mb12">Horas economizadas (por dia)</h4><div style="position:relative;height:120px"><canvas id="cAg"></canvas></div>
   </div>
  </div>`;
  loadAgente();
 }
+function setAgPeriod(p,btn){STATE.agPeriod=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}loadAgente();}
 function agStat(id,l,i){return `<div class="card metric"><div class="ic" style="background:var(--g2);color:#2a0a18"><i class="ti ${i}"></i></div><div class="v" id="${id}">…</div><div class="l">${l}</div></div>`}
 async function loadAgente(){
- let d=null;try{const r=await api('/api/agente');if(r.ok)d=r.data;}catch(e){}
+ let d=null;try{const r=await api('/api/agente?period='+(STATE.agPeriod||'7d'));if(r.ok)d=r.data;}catch(e){}
  if(CURRENT!=='agente')return;
  if(!d){['agConversas','agSemHumano','agTempo','agExec','agHoras','agEconomia','agManual','agOpsMes'].forEach(id=>ovSetVal(id,'—'));const o=document.getElementById('agOps');if(o)o.innerHTML='<div class="muted">Indisponível</div>';return;}
  const pct=d.cards.semHumanoPct==null?'—':d.cards.semHumanoPct+'%';
