@@ -135,6 +135,9 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 .th-sort:hover{color:var(--lt)}
 .th-sort .ar{font-size:10px;color:var(--p)}
 .th-sort.act{color:var(--p)}
+.scrolllist{max-height:300px;overflow-y:auto;border:1px solid var(--brd);border-radius:10px;padding:4px 10px;background:rgba(255,255,255,.02)}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .tbl-wrap{overflow-x:auto;border-radius:12px}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--brd);border-radius:10px;padding:8px 12px;flex:1;min-width:200px}
@@ -739,9 +742,40 @@ function renderOverview(v){
      <div class="search" style="flex:0 0 340px"><i class="ti ti-search"></i><input id="auditQ" placeholder="Buscar usuário ou máquina..." onkeydown="if(event.key==='Enter')auditBusca()"><select class="inp" id="auditTipo" style="width:auto;border:none;background:transparent"><option value="usuario">Usuário</option><option value="maquina">Máquina</option></select></div>
    </div>
    <div id="ovAudit"><div class="muted" style="padding:10px">Carregando auditoria…</div></div>
+   <div class="card mt16">
+     <div class="flex center wrap" style="justify-content:space-between;margin-bottom:12px">
+       <h4 style="margin:0"><i class="ti ti-user-clock"></i> Atividade de logon dos usuários (AD)</h4>
+       <div class="seg">${['7d','30d','90d'].map((p,i)=>`<button class="${i==1?'on':''}" onclick="setLogonPeriod('${p}',this)">${p}</button>`).join('')}</div>
+     </div>
+     <div id="ovLogon"><div class="muted" style="padding:10px">Carregando…</div></div>
+   </div>
  </div>`:''}`;
  loadOverview();
- if(can('view_audit'))loadAuditoria();
+ if(can('view_audit')){loadAuditoria();loadLogonAtividade();}
+}
+async function loadLogonAtividade(){
+ if(!STATE.logonPeriod)STATE.logonPeriod='30d';
+ let d=null;try{const r=await api('/api/usuarios-logon');if(r.ok)d=r.data;}catch(e){}
+ if(CURRENT!=='overview')return;const el=document.getElementById('ovLogon');if(!el)return;
+ if(!d){el.innerHTML='<div class="empty"><i class="ti ti-plug-connected-x"></i>Não foi possível consultar o AD</div>';return;}
+ if(d.configured===false){el.innerHTML='<div class="empty"><i class="ti ti-plug-connected-x"></i>AD não configurado</div>';return;}
+ STATE.logonUsuarios=d.usuarios||[];bucketLogon();
+}
+function setLogonPeriod(p,btn){STATE.logonPeriod=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}bucketLogon();}
+function bucketLogon(){
+ const el=document.getElementById('ovLogon');if(!el)return;
+ const dias={'7d':7,'30d':30,'90d':90}[STATE.logonPeriod||'30d'];const cut=Date.now()-dias*86400000;
+ const us=STATE.logonUsuarios||[];const logaram=[],naologaram=[];
+ for(const x of us){const t=x.ultimoLogon?new Date(x.ultimoLogon).getTime():0;(t>=cut?logaram:naologaram).push(x);}
+ logaram.sort((a,b)=>new Date(b.ultimoLogon)-new Date(a.ultimoLogon));
+ naologaram.sort((a,b)=>new Date(b.ultimoLogon||0)-new Date(a.ultimoLogon||0));
+ const row=(x)=>`<div class="kv"><span>${escapeHtml(x.nome||x.login)} <span class="muted" style="font-size:11px">${escapeHtml(x.login)}</span></span><span class="muted mono" style="font-size:11px">${x.ultimoLogon?ovFmtAgo(x.ultimoLogon):'nunca'}</span></div>`;
+ el.innerHTML=`<div class="grid g2">
+   <div><div class="flex" style="justify-content:space-between;margin-bottom:6px"><b style="font-size:13px"><i class="ti ti-user-check"></i> Logaram (últimos ${STATE.logonPeriod})</b><span class="badge b-green">${logaram.length}</span></div>
+     <div class="scrolllist">${logaram.length?logaram.map(row).join(''):'<div class="muted" style="padding:8px">Ninguém no período</div>'}</div></div>
+   <div><div class="flex" style="justify-content:space-between;margin-bottom:6px"><b style="font-size:13px"><i class="ti ti-user-x"></i> Não logaram / inativos</b><span class="badge b-amber">${naologaram.length}</span></div>
+     <div class="scrolllist">${naologaram.length?naologaram.map(row).join(''):'<div class="muted" style="padding:8px">Ninguém</div>'}</div></div>
+ </div>`;
 }
 // ----- Visão Geral: carregamento de dados reais -----
 function setOverviewPeriod(p,btn){STATE.ov.period=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}loadOverview()}
@@ -1202,18 +1236,21 @@ function openAddAprovador(){modal(`<div class="modal"><div class="mh"><h3>Adicio
  <p class="muted mb12" style="font-size:13px">Login (samAccountName) do usuário do AD a incluir no grupo <b>Aprovadores GLPI</b>.</p>
  <div class="field"><label>Login do AD</label><input class="inp" id="apLogin" placeholder="ex.: jsilva" onkeydown="if(event.key==='Enter')adicionarAprovador()"></div>
  <div class="btnrow"><button class="btn btn-grad" id="apBtn" onclick="adicionarAprovador()">Adicionar ao grupo</button><button class="btn btn-line" onclick="closeModal()">Cancelar</button></div></div>`)}
+function aprovBusy(msg){const el=document.getElementById('aprovWrap');if(el)el.innerHTML=`<div class="empty"><i class="ti ti-loader-2 spin"></i>${msg}</div>`;}
 async function adicionarAprovador(){
  const login=(val('apLogin')||'').trim();if(!login){toast('Informe o login');return;}
- const btn=document.getElementById('apBtn');if(btn)btn.disabled=true;
+ const btn=document.getElementById('apBtn');if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader-2 spin"></i> Processando no AD… aguarde';}
  try{const {ok,data}=await api('/api/aprovadores',{method:'POST',body:JSON.stringify({login})});
-  if(!ok)throw new Error(data.error||'falha');closeModal();toast('Aprovador adicionado no AD');loadAprovadores();
- }catch(e){toast('Erro: '+e.message);if(btn)btn.disabled=false}
+  if(!ok)throw new Error(data.error||'falha');
+  closeModal();aprovBusy('Adicionando “'+login+'” no AD… aguarde alguns segundos.');toast('Aprovador adicionado no AD');loadAprovadores();
+ }catch(e){toast('Erro: '+e.message);if(btn){btn.disabled=false;btn.innerHTML='Adicionar ao grupo';}}
 }
 async function removerAprovador(login){
  if(!confirm('Remover “'+login+'” do grupo Aprovadores GLPI no AD?'))return;
+ aprovBusy('Removendo “'+login+'” no AD… aguarde alguns segundos, a lista será atualizada.');
  try{const {ok,data}=await api('/api/aprovadores/'+encodeURIComponent(login),{method:'DELETE'});
   if(!ok)throw new Error(data.error||'falha');toast('Removido do AD');loadAprovadores();
- }catch(e){toast('Erro: '+e.message)}
+ }catch(e){toast('Erro: '+e.message);loadAprovadores();}
 }
 function val(id){return (document.getElementById(id)||{}).value||''}
 function renderSysUsers(v){

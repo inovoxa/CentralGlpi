@@ -17,6 +17,7 @@ import auditoriaRoutes from './routes/auditoria.js';
 import adminRoutes from './routes/admin.js';
 import notificacoesRoutes from './routes/notificacoes.js';
 import aprovadoresRoutes from './routes/aprovadores.js';
+import adUsuariosRoutes from './routes/adusuarios.js';
 import { runMigrations } from './db/migrate.js';
 import { startCollector } from './ad/collector.js';
 import { pgClose } from './db/postgres.js';
@@ -55,6 +56,7 @@ await app.register(auditoriaRoutes);
 await app.register(adminRoutes);
 await app.register(notificacoesRoutes);
 await app.register(aprovadoresRoutes);
+await app.register(adUsuariosRoutes);
 
 // Front estático (index.html + imagens). Wildcard não conflita com /api/* (rotas exatas vencem).
 await app.register(fstatic, {
