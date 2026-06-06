@@ -847,12 +847,17 @@ function miniCard(ic,c,t,m,s){return `<div class="card sm"><div class="flex ic-g
 function ticketsForUser(){const pr=effectiveProfile();if(pr==='gestor'){return STATE.tickets.filter(t=>t.sector===STATE.currentUser.sector)}return STATE.tickets}
 // Busca os chamados do GLPI (via API) para STATE.tickets. Retorna true se ok.
 async function loadTickets(){
- try{const {ok,data}=await api('/api/tickets');if(ok){STATE.tickets=data.tickets||[];return true;}}catch(e){}
+ const per=STATE.ticketsPeriod||'30d';
+ try{const {ok,data}=await api('/api/tickets?period='+per);if(ok){STATE.tickets=data.tickets||[];return true;}}catch(e){}
  STATE.tickets=STATE.tickets||[];return false;
 }
+function ticketsSeg(){const cur=STATE.ticketsPeriod||'30d';return `<div class="seg">${['7d','30d','90d','180d'].map(p=>`<button class="${p===cur?'on':''}" onclick="setTicketsPeriod('${p}',this)">${p}</button>`).join('')}</div>`;}
+function setTicketsPeriod(p,btn){STATE.ticketsPeriod=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
+ loadTickets().then(()=>{if(CURRENT==='kanban')paintKanban();else if(CURRENT==='tickets')paintTickets();});}
 function renderKanban(v){
+ if(!STATE.ticketsPeriod)STATE.ticketsPeriod='30d';
  v.innerHTML=ph('Kanban','Arraste os cards entre as colunas'+(effectiveProfile()==='gestor'?' · mostrando só seu setor':''),
-   `<div class="search" style="flex:0 0 240px"><i class="ti ti-search"></i><input placeholder="Buscar chamado..." oninput="filterKanban(this.value)"></div>`)+
+   ticketsSeg()+`<div class="search" style="flex:0 0 220px"><i class="ti ti-search"></i><input placeholder="Buscar chamado..." oninput="filterKanban(this.value)"></div>`)+
  `<div class="kanban" id="kanban"><div class="empty" style="grid-column:1/-1"><i class="ti ti-loader-2"></i>Carregando chamados…</div></div>`;
  loadTickets().then(()=>{if(CURRENT==='kanban')paintKanban()});
 }
@@ -960,9 +965,10 @@ function stopLive(){if(STATE.liveTimer)clearInterval(STATE.liveTimer)}
 const TCOLS=[['id','ID'],['sol','Solicitante'],['sigla','Setor'],['cat','Categoria'],['canal','Canal'],['status','Status'],['sla','SLA'],['assignee','Atribuído'],['local','Local'],['grupoTecnico','Grupo téc.'],['aberto','Aberto']];
 function renderTickets(v){
  if(!STATE.ticketSort)STATE.ticketSort={field:'aberto',dir:'desc'};
+ if(!STATE.ticketsPeriod)STATE.ticketsPeriod='30d';
  STATE.tfilter='';STATE.tstatus='';
  const ths=TCOLS.map(c=>`<th class="th-sort" data-f="${c[0]}" onclick="sortTickets('${c[0]}')">${c[1]} <span class="ar"></span></th>`).join('');
- v.innerHTML=ph('Chamados','Carregando…',`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
+ v.innerHTML=ph('Chamados','Carregando…',ticketsSeg()+`<button class="btn btn-line btn-sm" onclick="${can('export')?'toast(\'CSV exportado (simulado)\')':'toast(\'Sem permissão\')'}"><i class="ti ti-file-spreadsheet"></i> Exportar CSV</button>`)+
  `<div class="toolbar"><div class="search"><i class="ti ti-search"></i><input placeholder="Buscar por ID, solicitante, categoria..." oninput="filterTickets(this.value)"></div>
    <select class="inp" style="width:auto" onchange="filterTicketsStatus(this.value)"><option value="">Todos status</option>${STATUSES.map(s=>`<option value="${s}">${STLABEL[s]}</option>`).join('')}</select></div>
  <div class="tbl-wrap card" style="padding:0"><table id="ttbl"><thead><tr>${ths}<th></th></tr></thead><tbody id="ttblBody"><tr><td colspan="12" class="muted" style="padding:20px;text-align:center">Carregando…</td></tr></tbody></table></div>`;

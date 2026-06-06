@@ -49,11 +49,12 @@ const JOIN_EXTRA = `LEFT JOIN glpi_entities e ON e.id = t.entities_id
 
 // Lista de tickets do GLPI. opts: { ids?, search?, limit, offset }.
 // Retorna { rows, total }. Se ids for [] (setor sem tickets), retorna vazio.
-export async function listTickets({ ids = null, search = '', limit = 200, offset = 0 } = {}) {
+export async function listTickets({ ids = null, search = '', limit = 200, offset = 0, desde = null } = {}) {
   if (ids && ids.length === 0) return { rows: [], total: 0 };
 
   const where = ['t.is_deleted = 0'];
   const params = {};
+  if (desde) { params.desde = desde; where.push('t.date >= :desde'); }
   if (ids && ids.length) {
     const keys = ids.map((v, i) => { params['id' + i] = v; return ':id' + i; });
     where.push(`t.id IN (${keys.join(',')})`);

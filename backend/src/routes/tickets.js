@@ -81,8 +81,11 @@ export default async function ticketRoutes(fastify) {
     }
     const search = (req.query.search || '').toString().trim().slice(0, 80);
     const limit = Math.min(500, parseInt(req.query.limit, 10) || 300);
+    const DIAS = { '7d': 7, '30d': 30, '90d': 90, '180d': 180 };
+    const dias = DIAS[req.query.period] || 30;
+    const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 
-    const { rows, total } = await listTickets({ ids, search, limit });
+    const { rows, total } = await listTickets({ ids, search, limit, desde });
     const enrich = await enrichFromLog(rows.map((r) => r.id));
     return { tickets: rows.map((r) => shape(r, enrich)), total, sector: scope.sector === '__none__' ? null : scope.sector };
   });
