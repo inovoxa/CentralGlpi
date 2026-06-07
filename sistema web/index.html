@@ -135,7 +135,11 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 .th-sort:hover{color:var(--lt)}
 .th-sort .ar{font-size:10px;color:var(--p)}
 .th-sort.act{color:var(--p)}
-.scrolllist{max-height:300px;overflow-y:auto;border:1px solid var(--brd);border-radius:10px;padding:4px 10px;background:rgba(255,255,255,.02)}
+.scrolllist{height:280px;overflow-y:auto;border:1px solid var(--brd);border-radius:10px;padding:4px 10px;background:rgba(255,255,255,.02)}
+.seg.seg-sm{flex-wrap:wrap}
+.seg.seg-sm button{padding:3px 8px;font-size:11px}
+.search.search-sm{padding:5px 9px}
+.search.search-sm input{font-size:12px}
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .tbl-wrap{overflow-x:auto;border-radius:12px}
@@ -742,40 +746,9 @@ function renderOverview(v){
      <div class="search" style="flex:0 0 340px"><i class="ti ti-search"></i><input id="auditQ" placeholder="Buscar usuário ou máquina..." onkeydown="if(event.key==='Enter')auditBusca()"><select class="inp" id="auditTipo" style="width:auto;border:none;background:transparent"><option value="usuario">Usuário</option><option value="maquina">Máquina</option></select></div>
    </div>
    <div id="ovAudit"><div class="muted" style="padding:10px">Carregando auditoria…</div></div>
-   <div class="card mt16">
-     <div class="flex center wrap" style="justify-content:space-between;margin-bottom:12px">
-       <h4 style="margin:0"><i class="ti ti-user-clock"></i> Atividade de logon dos usuários (AD)</h4>
-       <div class="seg">${['7d','30d','90d'].map((p,i)=>`<button class="${i==1?'on':''}" onclick="setLogonPeriod('${p}',this)">${p}</button>`).join('')}</div>
-     </div>
-     <div id="ovLogon"><div class="muted" style="padding:10px">Carregando…</div></div>
-   </div>
  </div>`:''}`;
  loadOverview();
- if(can('view_audit')){loadAuditoria();loadLogonAtividade();}
-}
-async function loadLogonAtividade(){
- if(!STATE.logonPeriod)STATE.logonPeriod='30d';
- let d=null;try{const r=await api('/api/usuarios-logon');if(r.ok)d=r.data;}catch(e){}
- if(CURRENT!=='overview')return;const el=document.getElementById('ovLogon');if(!el)return;
- if(!d){el.innerHTML='<div class="empty"><i class="ti ti-plug-connected-x"></i>Não foi possível consultar o AD</div>';return;}
- if(d.configured===false){el.innerHTML='<div class="empty"><i class="ti ti-plug-connected-x"></i>AD não configurado</div>';return;}
- STATE.logonUsuarios=d.usuarios||[];bucketLogon();
-}
-function setLogonPeriod(p,btn){STATE.logonPeriod=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}bucketLogon();}
-function bucketLogon(){
- const el=document.getElementById('ovLogon');if(!el)return;
- const dias={'7d':7,'30d':30,'90d':90}[STATE.logonPeriod||'30d'];const cut=Date.now()-dias*86400000;
- const us=STATE.logonUsuarios||[];const logaram=[],naologaram=[];
- for(const x of us){const t=x.ultimoLogon?new Date(x.ultimoLogon).getTime():0;(t>=cut?logaram:naologaram).push(x);}
- logaram.sort((a,b)=>new Date(b.ultimoLogon)-new Date(a.ultimoLogon));
- naologaram.sort((a,b)=>new Date(b.ultimoLogon||0)-new Date(a.ultimoLogon||0));
- const row=(x)=>`<div class="kv"><span>${escapeHtml(x.nome||x.login)} <span class="muted" style="font-size:11px">${escapeHtml(x.login)}</span></span><span class="muted mono" style="font-size:11px">${x.ultimoLogon?ovFmtAgo(x.ultimoLogon):'nunca'}</span></div>`;
- el.innerHTML=`<div class="grid g2">
-   <div><div class="flex" style="justify-content:space-between;margin-bottom:6px"><b style="font-size:13px"><i class="ti ti-user-check"></i> Logaram (últimos ${STATE.logonPeriod})</b><span class="badge b-green">${logaram.length}</span></div>
-     <div class="scrolllist">${logaram.length?logaram.map(row).join(''):'<div class="muted" style="padding:8px">Ninguém no período</div>'}</div></div>
-   <div><div class="flex" style="justify-content:space-between;margin-bottom:6px"><b style="font-size:13px"><i class="ti ti-user-x"></i> Não logaram / inativos</b><span class="badge b-amber">${naologaram.length}</span></div>
-     <div class="scrolllist">${naologaram.length?naologaram.map(row).join(''):'<div class="muted" style="padding:8px">Ninguém</div>'}</div></div>
- </div>`;
+ if(can('view_audit'))loadAuditoria();
 }
 // ----- Visão Geral: carregamento de dados reais -----
 function setOverviewPeriod(p,btn){STATE.ov.period=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}loadOverview()}
@@ -816,7 +789,55 @@ function fmtDT(iso){if(!iso)return'—';const d=new Date(iso);const p=n=>String(
 async function loadAuditoria(){
  let d=null;try{const r=await api('/api/auditoria/overview');if(r.ok)d=r.data;}catch(e){}
  const el=document.getElementById('ovAudit');if(!el)return;
+ STATE.audit=d;
  el.innerHTML=d?auditHtml(d):'<div class="muted" style="padding:10px">Auditoria indisponível</div>';
+ try{const r=await api('/api/usuarios-logon');STATE.logonUsuarios=(r.ok&&r.data.usuarios)?r.data.usuarios:[];}catch(e){STATE.logonUsuarios=[];}
+ renderLogonCols();
+}
+// ----- 4 colunas de logon: busca + filtro 7/30/90 + altura fixa com scroll -----
+const LOGCOLS=[
+ {k:'quem',t:'Quem logou',ic:'ti-user-check',def:'7d'},
+ {k:'ultimos',t:'Últimos logons',ic:'ti-history',def:'30d'},
+ {k:'simult',t:'Logons simultâneos',ic:'ti-devices',def:'30d'},
+ {k:'nao',t:'Não logaram',ic:'ti-user-x',def:'7d'},
+];
+function logonState(k){STATE.logonCol=STATE.logonCol||{};if(!STATE.logonCol[k])STATE.logonCol[k]={p:LOGCOLS.find(c=>c.k===k).def,q:''};return STATE.logonCol[k];}
+function renderLogonCols(){
+ const row=document.getElementById('logonRow');if(!row)return;
+ row.innerHTML=LOGCOLS.map(c=>{const s=logonState(c.k);
+   const seg=['7d','30d','90d'].map(p=>`<button class="${p===s.p?'on':''}" onclick="logonPeriod('${c.k}','${p}',this)">${p}</button>`).join('');
+   return `<div class="card">
+     <h4 style="margin:0 0 8px;font-size:13px"><i class="ti ${c.ic}"></i> ${c.t}</h4>
+     <div class="seg seg-sm" style="margin-bottom:8px">${seg}</div>
+     <div class="search search-sm" style="margin-bottom:8px"><i class="ti ti-search"></i><input placeholder="Buscar usuário…" value="${(s.q||'').replace(/"/g,'&quot;')}" oninput="logonSearch('${c.k}',this.value)"></div>
+     <div class="scrolllist" id="colbody_${c.k}"></div>
+   </div>`;}).join('');
+ LOGCOLS.forEach(c=>renderColBody(c.k));
+}
+function logonSearch(k,v){logonState(k).q=v;renderColBody(k);}
+function logonPeriod(k,p,btn){logonState(k).p=p;if(btn){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}renderColBody(k);}
+function logonMap(){const m={};for(const u of (STATE.logonUsuarios||[]))m[(u.login||'').toLowerCase()]=u.ultimoLogon;return m;}
+function renderColBody(k){
+ const el=document.getElementById('colbody_'+k);if(!el)return;
+ const s=logonState(k);const cut=Date.now()-({'7d':7,'30d':30,'90d':90}[s.p])*86400000;
+ const q=(s.q||'').toLowerCase();const match=(...v)=>!q||v.some(x=>(x||'').toString().toLowerCase().includes(q));
+ const us=STATE.logonUsuarios||[];const L=(STATE.audit&&STATE.audit.logons)||{};let arr=[],html='';
+ const rowU=(u)=>`<div class="kv"><span>${userLink(u.login)} <span class="muted" style="font-size:11px">${escapeHtml(u.nome||'')}</span></span><span class="muted mono" style="font-size:11px">${u.ultimoLogon?ovFmtAgo(u.ultimoLogon):'nunca'}</span></div>`;
+ if(k==='quem'){
+   arr=us.filter(u=>{const t=u.ultimoLogon?new Date(u.ultimoLogon).getTime():0;return t>=cut&&match(u.login,u.nome);}).sort((a,b)=>new Date(b.ultimoLogon)-new Date(a.ultimoLogon));
+   html=arr.length?arr.map(rowU).join(''):'<div class="muted" style="font-size:12px;padding:8px">Ninguém no período</div>';
+ }else if(k==='nao'){
+   arr=us.filter(u=>{const t=u.ultimoLogon?new Date(u.ultimoLogon).getTime():0;return t<cut&&match(u.login,u.nome);}).sort((a,b)=>new Date(b.ultimoLogon||0)-new Date(a.ultimoLogon||0));
+   html=arr.length?arr.map(rowU).join(''):'<div class="muted" style="font-size:12px;padding:8px">Ninguém</div>';
+ }else if(k==='ultimos'){
+   arr=(L.ultimos||[]).filter(u=>{const t=u.ocorrido_em?new Date(u.ocorrido_em).getTime():0;return t>=cut&&match(u.usuario,u.computador);});
+   html=arr.length?arr.map(u=>`<div class="kv"><span>${userLink(u.usuario)} <span class="muted" style="font-size:11px">${escapeHtml(u.computador||'')}</span></span><span class="muted mono" style="font-size:11px">${ovFmtAgo(u.ocorrido_em)}</span></div>`).join(''):'<div class="muted" style="font-size:12px;padding:8px">Sem registros</div>';
+ }else{ // simult
+   const map=logonMap();const temMapa=Object.keys(map).length>0;
+   arr=(L.simultaneos||[]).filter(u=>{const lo=map[(u.usuario||'').toLowerCase()];const t=lo?new Date(lo).getTime():0;return (!temMapa||t>=cut)&&match(u.usuario);});
+   html=arr.length?arr.map(u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="badge b-amber">${u.maquinas} máquinas</span></div>`).join(''):'<div class="muted" style="font-size:12px;padding:8px">Nenhum</div>';
+ }
+ el.innerHTML=html;
 }
 function audKpi(ic,c,val,label){return `<div class="card metric"><div class="ic" style="background:${c};color:#04121a"><i class="ti ${ic}"></i></div><div class="v">${val}</div><div class="l">${label}</div></div>`}
 function userLink(u){return `<span class="linklike" onclick="openUserProfile('${(u||'').replace(/'/g,'')}')">${u||'—'}</span>`}
@@ -831,11 +852,7 @@ function auditHtml(d){
    ${audKpi('ti-lock','var(--g2)',B.total7d,'Bloqueios (7d)')}
    ${audKpi('ti-shield-bolt','var(--g2)',E.bruteForce.length,'Alvos de brute force')}
  </div>
- <div class="grid g3 mt16">
-   <div class="card"><h4 class="mb12"><i class="ti ti-user-check"></i> Quem logou hoje</h4>${listOr(L.quemLogouHoje,u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="muted mono" style="font-size:11px">${fmtDT(u.ultimo)}</span></div>`,'Ninguém ainda')}</div>
-   <div class="card"><h4 class="mb12"><i class="ti ti-history"></i> Últimos logons</h4>${listOr(L.ultimos,u=>`<div class="kv"><span>${userLink(u.usuario)} <span class="muted" style="font-size:11px">${u.computador||''}</span></span><span class="muted mono" style="font-size:11px">${ovFmtAgo(u.ocorrido_em)}</span></div>`,'Sem registros')}</div>
-   <div class="card"><h4 class="mb12"><i class="ti ti-devices"></i> Logons simultâneos</h4>${listOr(L.simultaneos,u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="badge b-amber">${u.maquinas} máquinas</span></div>`,'Nenhum')}</div>
- </div>
+ <div id="logonRow" class="grid g4 mt16"></div>
  <div class="grid g2 mt16">
    <div class="card"><h4 class="mb12"><i class="ti ti-lock-x"></i> Bloqueios recentes</h4>${listOr(B.recentes,b=>`<div class="kv"><span>${userLink(b.usuario)} <span class="muted" style="font-size:11px">origem: ${b.origem||'?'}</span></span><span class="muted mono" style="font-size:11px">${fmtDT(b.ocorrido_em)}</span></div>`,'Nenhum bloqueio')}</div>
    <div class="card"><h4 class="mb12"><i class="ti ti-shield-bolt"></i> Tentativas de brute force (1h)</h4>${listOr(E.bruteForce,b=>`<div class="kv"><span>${userLink(b.usuario)} <span class="muted" style="font-size:11px">${b.ip||''}</span></span><span class="badge b-red">${b.tentativas} tentativas</span></div>`,'Nada suspeito')}</div>
