@@ -23,7 +23,8 @@ param(
   [int]$EventId,
   [long]$AfterRecordId = 0,
   [int]$Max = 500,
-  [string]$User
+  [string]$User,
+  [switch]$AllUsers
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,8 +58,22 @@ try {
     }
   }
 
+  # ---------- Modo todos os usuários (para "Quem logou / Não logaram") ----------
+  if ($AllUsers) {
+    Import-Module ActiveDirectory -ErrorAction Stop
+    $us = Get-ADUser -Filter 'Enabled -eq $true' -Properties LastLogonDate, Department | ForEach-Object {
+      [pscustomobject]@{
+        login        = $_.SamAccountName
+        nome         = $_.Name
+        departamento = $_.Department
+        ultimoLogon  = $(if ($_.LastLogonDate) { $_.LastLogonDate.ToString('o') } else { $null })
+      }
+    }
+    Write-Json @{ usuarios = @($us) }
+  }
+
   # ---------- Modo eventos ----------
-  if (-not $EventId) { Write-Json @{ erro = 'informe -EventId ou -User' } }
+  if (-not $EventId) { Write-Json @{ erro = 'informe -EventId, -User ou -AllUsers' } }
 
   $ignorar = '^(SYSTEM|ANONYMOUS LOGON|LOCAL SERVICE|NETWORK SERVICE|DWM-\d+|UMFD-\d+)$'
   $eventos = @()
