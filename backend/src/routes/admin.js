@@ -6,9 +6,9 @@ import {
   listAcesso, listOperacao, setoresEmUso,
 } from '../db/adminQueries.js';
 import { findByEmail } from '../db/users.js';
-import { profileExists, PROFILES } from '../lib/rbac.js';
+import { profileExists, PROFILES, PERMS, ALLPERMS, effectivePerms, setOverride } from '../lib/rbac.js';
 import { logOperation } from '../db/audit.js';
-import { pgHealth } from '../db/postgres.js';
+import { pgHealth, pgQuery } from '../db/postgres.js';
 import { glpiHealth } from '../db/mysql.js';
 import { chatwootReady } from '../chatwoot/client.js';
 import { adEnabled } from '../ad/ssh.js';
@@ -99,6 +99,32 @@ export default async function adminRoutes(fastify) {
       { label: 'Perfil', get: (r) => r.profile }, { label: 'Ação', get: (r) => r.acao },
       { label: 'Detalhe', get: (r) => r.delta }, { label: 'IP', get: (r) => r.ip }]);
     reply.header('Content-Type', 'text/csv; charset=utf-8').header('Content-Disposition', 'attachment; filename="logs_operacao.csv"').send(csv);
+  });
+
+  // ---- Perfis e permissões (editáveis) ----
+  fastify.get('/api/admin/perfis', { preHandler: fastify.requirePerm('manage_profiles') }, async () => {
+    const profiles = {};
+    for (const [k, p] of Object.entries(PROFILES)) {
+      profiles[k] = { name: p.name, desc: p.desc, color: p.color, perms: effectivePerms(k) };
+    }
+    return { perms: PERMS, profiles };
+  });
+
+  fastify.patch('/api/admin/perfis/:profile', { preHandler: fastify.requirePerm('manage_profiles') }, async (req, reply) => {
+    const profile = req.params.profile;
+    if (!profileExists(profile)) return reply.code(404).send({ error: 'perfil inexistente' });
+    if (!Array.isArray(req.body?.perms)) return reply.code(400).send({ error: 'perms inválido' });
+    let perms = [...new Set(req.body.perms.filter((p) => ALLPERMS.includes(p)))];
+    // Trava de segurança: admin sempre mantém gestão de perfis e usuários (evita lockout).
+    if (profile === 'admin') for (const must of ['manage_profiles', 'manage_users']) if (!perms.includes(must)) perms.push(must);
+    await pgQuery(
+      `INSERT INTO glpi_n8n.app_perfil_perms (profile, perms) VALUES ($1, $2::jsonb)
+       ON CONFLICT (profile) DO UPDATE SET perms = $2::jsonb, atualizado_em = now()`,
+      [profile, JSON.stringify(perms)],
+    );
+    setOverride(profile, perms);
+    await logOperation({ userId: req.session.uid, profile: req.session.profile, acao: `alterou permissões do perfil ${profile}`, delta: `${perms.length} permissões`, ip: req.ip });
+    return { ok: true, profile, perms };
   });
 
   // ---- Setores em uso ----

@@ -7,7 +7,7 @@ import { logOperation } from '../db/audit.js';
 const SAFE_LOGIN = /^[A-Za-z0-9._\-\\ ]{1,128}$/;
 
 export default async function aprovadoresRoutes(fastify) {
-  fastify.get('/api/aprovadores', { preHandler: fastify.requirePerm('view_audit') }, async (req, reply) => {
+  fastify.get('/api/aprovadores', { preHandler: fastify.requirePerm('manage_approvers') }, async (req, reply) => {
     if (!adEnabled()) return { configured: false, grupo: 'Aprovadores GLPI', membros: [] };
     try {
       const d = await listAprovadores();
@@ -17,7 +17,7 @@ export default async function aprovadoresRoutes(fastify) {
     }
   });
 
-  fastify.post('/api/aprovadores', { preHandler: fastify.requirePerm('view_audit') }, async (req, reply) => {
+  fastify.post('/api/aprovadores', { preHandler: fastify.requirePerm('manage_approvers') }, async (req, reply) => {
     if (!adEnabled()) return reply.code(503).send({ error: 'AD não configurado' });
     const login = String((req.body && req.body.login) || '').trim();
     if (!SAFE_LOGIN.test(login)) return reply.code(400).send({ error: 'login inválido' });
@@ -27,7 +27,7 @@ export default async function aprovadoresRoutes(fastify) {
     return { ok: true, grupo: d.grupo, membros: d.membros || [] };
   });
 
-  fastify.delete('/api/aprovadores/:login', { preHandler: fastify.requirePerm('view_audit') }, async (req, reply) => {
+  fastify.delete('/api/aprovadores/:login', { preHandler: fastify.requirePerm('manage_approvers') }, async (req, reply) => {
     if (!adEnabled()) return reply.code(503).send({ error: 'AD não configurado' });
     const login = String(req.params.login || '').trim();
     if (!SAFE_LOGIN.test(login)) return reply.code(400).send({ error: 'login inválido' });

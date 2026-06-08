@@ -347,15 +347,15 @@ const PERMS=[
  {g:'Operação',items:[['view_all','Ver todos os chamados'],['view_sector','Ver chamados do setor'],['move_kanban','Mover cards no Kanban'],['assume','Assumir conversas'],['send_msg','Responder no chat'],['update_status','Atualizar status']]},
  {g:'Aprovação & Execução',items:[['approve','Aprovar chamados'],['execute_ad','Executar no AD/Exchange'],['edit_sla','Editar SLAs']]},
  {g:'Gestão',items:[['manage_users','Cadastrar usuários do sistema'],['manage_profiles','Gerenciar perfis'],['manage_sectors','Gerenciar setores'],['config','Configurações do sistema']]},
- {g:'Auditoria',items:[['view_audit','Ver auditoria'],['export','Exportar relatórios/logs']]}
+ {g:'Auditoria',items:[['view_audit','Ver auditoria'],['manage_approvers','Gerenciar aprovadores (AD)'],['export','Exportar relatórios/logs']]}
 ];
 const ALLPERMS=PERMS.flatMap(x=>x.items.map(i=>i[0]));
 const PROFILES={
  admin:{name:'Admin',desc:'Acesso total ao sistema, incluindo cadastros e configuração',color:'var(--p)',perms:[...ALLPERMS]},
- coord:{name:'Coordenador TI',desc:'Aprova, executa, edita SLAs e vê auditoria',color:'var(--s)',perms:['view_all','move_kanban','assume','send_msg','update_status','approve','execute_ad','edit_sla','view_audit','export','manage_users','manage_sectors']},
+ coord:{name:'Coordenador TI',desc:'Aprova, executa, edita SLAs e vê auditoria',color:'var(--s)',perms:['view_all','move_kanban','assume','send_msg','update_status','approve','execute_ad','edit_sla','view_audit','manage_approvers','export','manage_users','manage_sectors']},
  tecnico:{name:'Técnico',desc:'Atende chamados atribuídos e a fila geral',color:'var(--a)',perms:['view_all','move_kanban','assume','send_msg','update_status']},
  gestor:{name:'Gestor de Setor',desc:'Aprova chamados do próprio setor, sem ações técnicas',color:'var(--warn)',perms:['view_sector','approve']},
- auditor:{name:'Auditor',desc:'Somente leitura — consulta e exporta logs',color:'#9db4ff',perms:['view_all','view_audit','export']}
+ auditor:{name:'Auditor',desc:'Somente leitura — consulta e exporta logs',color:'#9db4ff',perms:['view_all','view_audit','manage_approvers','export']}
 };
 function can(p){const pr=effectiveProfile();return PROFILES[pr]?.perms.includes(p)}
 function effectiveProfile(){return STATE.viewAs||STATE.currentUser?.profile}
@@ -542,7 +542,7 @@ const NAV=[
    {id:'tickets',t:'Chamados',i:'ti-ticket'},
    {id:'conversas',t:'Histórico de conversas',i:'ti-messages'},
    {id:'agente',t:'Agente IA',i:'ti-robot'},
-   {id:'aprovadores',t:'Aprovadores de chamado',i:'ti-user-shield',need:'view_audit'}]},
+   {id:'aprovadores',t:'Aprovadores de chamado',i:'ti-user-shield',need:'manage_approvers'}]},
  {g:'Gestão',need:['manage_users','manage_sectors','config','manage_profiles'],items:[
    {id:'sysusers',t:'Usuários do sistema',i:'ti-users',need:'manage_users'},
    {id:'profiles',t:'Perfis e permissões',i:'ti-shield-lock',need:'manage_profiles'},
@@ -796,7 +796,6 @@ async function loadAuditoria(){
 }
 // ----- 4 colunas de logon: busca + filtro 7/30/90 + altura fixa com scroll -----
 const LOGCOLS=[
- {k:'quem',t:'Quem logou',ic:'ti-user-check',def:'7d'},
  {k:'ultimos',t:'Últimos logons',ic:'ti-history',def:'30d'},
  {k:'simult',t:'Logons simultâneos',ic:'ti-devices',def:'30d'},
  {k:'nao',t:'Não logaram',ic:'ti-user-x',def:'7d'},
@@ -852,11 +851,7 @@ function auditHtml(d){
    ${audKpi('ti-lock','var(--g2)',B.total7d,'Bloqueios (7d)')}
    ${audKpi('ti-shield-bolt','var(--g2)',E.bruteForce.length,'Alvos de brute force')}
  </div>
- <div id="logonRow" class="grid g4 mt16"></div>
- <div class="grid g2 mt16">
-   <div class="card"><h4 class="mb12"><i class="ti ti-lock-x"></i> Bloqueios recentes</h4>${listOr(B.recentes,b=>`<div class="kv"><span>${userLink(b.usuario)} <span class="muted" style="font-size:11px">origem: ${b.origem||'?'}</span></span><span class="muted mono" style="font-size:11px">${fmtDT(b.ocorrido_em)}</span></div>`,'Nenhum bloqueio')}</div>
-   <div class="card"><h4 class="mb12"><i class="ti ti-shield-bolt"></i> Tentativas de brute force (1h)</h4>${listOr(E.bruteForce,b=>`<div class="kv"><span>${userLink(b.usuario)} <span class="muted" style="font-size:11px">${b.ip||''}</span></span><span class="badge b-red">${b.tentativas} tentativas</span></div>`,'Nada suspeito')}</div>
- </div>`;
+ <div id="logonRow" class="grid g3 mt16"></div>`;
 }
 async function openUserProfile(login){
  if(!login)return;modal('<div class="side-modal"><div class="empty"><i class="ti ti-loader-2"></i>Carregando perfil…</div></div>');
@@ -982,7 +977,7 @@ function buildCharts(d){
  charts.push(new Chart(g,{type:'line',data:{labels:ev.labels,datasets:[{data:ev.data,borderColor:'#00D9C0',backgroundColor:grad,fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#00D9C0',spanGaps:true}]},options:co({y:{min:0,max:100}})}));
  charts.push(new Chart(document.getElementById('c2'),{type:'bar',data:{labels:cat.labels,datasets:[{data:cat.data,backgroundColor:cat.labels.map((_,i)=>pal[i%pal.length]),borderRadius:6}]},options:{...co({x:{max:100}}),indexAxis:'y'}}));
  charts.push(new Chart(document.getElementById('c3'),{type:'bar',data:{labels:sem.labels,datasets:[{label:'WhatsApp',data:sem.whatsapp,backgroundColor:'#00D9C0',borderRadius:5},{label:'Formulário',data:sem.formulario,backgroundColor:'#5B7FDE',borderRadius:5},{label:'Manual',data:sem.manual,backgroundColor:'#E85D9A',borderRadius:5}]},options:{...co(),plugins:{legend:{display:true,position:'bottom'}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true}}}}));
- charts.push(new Chart(document.getElementById('c4'),{type:'doughnut',data:{labels:dist.labels,datasets:[{data:dist.data,backgroundColor:dist.labels.map((_,i)=>pal[i%pal.length]),borderWidth:0}]},options:{plugins:{legend:{position:'right'}},cutout:'62%'}}));
+ charts.push(new Chart(document.getElementById('c4'),{type:'doughnut',data:{labels:dist.labels,datasets:[{data:dist.data,backgroundColor:dist.labels.map((_,i)=>pal[i%pal.length]),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11},padding:8}}},cutout:'60%'}}));
 }
 function co(scales){return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scales||{}}}
 
@@ -1340,20 +1335,38 @@ function tabSwitch(btn,id){btn.parentNode.querySelectorAll('button').forEach(b=>
  btn.closest('.modal,.view,.card').querySelectorAll('[id^="'+id.slice(0,2)+'"]').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden')}
 
 function renderProfiles(v){
- paintProfiles(v);
+ loadPerfis(v);
  api('/api/admin/usuarios').then(r=>{if(r.ok){STATE.adminPorPerfil=r.data.porPerfil||{};if(CURRENT==='profiles')paintProfiles(document.getElementById('view'));}}).catch(()=>{});
 }
-function paintProfiles(v){
- const counts=STATE.adminPorPerfil||{};
- v.innerHTML=ph('Perfis e permissões',Object.keys(PROFILES).length+' perfis definidos no sistema')+
- `<div class="grid g2">${Object.entries(PROFILES).map(([k,p])=>`<div class="card"><div class="flex center" style="justify-content:space-between"><div><h4 style="color:${p.color}">${p.name}</h4><p class="muted" style="font-size:12.5px">${p.desc}</p></div><span class="badge b-grey">${counts[k]??'—'} usuários</span></div>
-  <div class="mt16 flex wrap" style="gap:5px">${p.perms.slice(0,6).map(pr=>`<span class="chip">${permLabel(pr)}</span>`).join('')}${p.perms.length>6?`<span class="chip">+${p.perms.length-6}</span>`:''}</div>
-  <button class="btn btn-line btn-sm mt16" onclick="openPermEdit('${k}')"><i class="ti ti-eye"></i> Ver permissões</button></div>`).join('')}</div>
- <div class="muted mt16" style="font-size:12px">Perfis e permissões são definidos no servidor (RBAC). Edição dinâmica pode ser adicionada depois.</div>`;
+async function loadPerfis(v){
+ try{const r=await api('/api/admin/perfis');if(r.ok)STATE.perfis=r.data;}catch(e){}
+ if(CURRENT==='profiles')paintProfiles(v||document.getElementById('view'));
 }
-function openPermEdit(k){const p=PROFILES[k];modal(`<div class="modal wide"><div class="mh"><div><h3>${p.name}</h3><div class="msub">${p.desc}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
- ${PERMS.map(g=>`<div class="grp" style="margin:14px 0 8px">${g.g}</div><div class="permgrid">${g.items.map(it=>`<label class="permrow"><span class="sw ${p.perms.includes(it[0])?'on':''}"></span>${it[1]}</label>`).join('')}</div>`).join('')}
- <div class="btnrow"><button class="btn btn-line" onclick="closeModal()">Fechar</button></div></div>`)}
+function paintProfiles(v){
+ if(!v)return;const P=STATE.perfis||{perms:PERMS,profiles:PROFILES};const counts=STATE.adminPorPerfil||{};const editar=can('manage_profiles');
+ v.innerHTML=ph('Perfis e permissões',Object.keys(P.profiles).length+' perfis · permissões aplicadas no servidor (RBAC)')+
+ `<div class="grid g2">${Object.entries(P.profiles).map(([k,p])=>`<div class="card"><div class="flex center" style="justify-content:space-between"><div><h4 style="color:${p.color||'var(--p)'}">${p.name}</h4><p class="muted" style="font-size:12.5px">${p.desc||''}</p></div><span class="badge b-grey">${counts[k]??'—'} usuários</span></div>
+  <div class="mt16 flex wrap" style="gap:5px">${(p.perms||[]).slice(0,6).map(pr=>`<span class="chip">${permLabel(pr)}</span>`).join('')}${(p.perms||[]).length>6?`<span class="chip">+${p.perms.length-6}</span>`:''}</div>
+  <button class="btn btn-line btn-sm mt16" onclick="openPermEdit('${k}')"><i class="ti ${editar?'ti-edit':'ti-eye'}"></i> ${editar?'Editar permissões':'Ver permissões'}</button></div>`).join('')}</div>`;
+}
+function openPermEdit(k){
+ const P=STATE.perfis||{perms:PERMS,profiles:PROFILES};const p=P.profiles[k];if(!p)return;
+ const editar=can('manage_profiles');const cur=new Set(p.perms||[]);
+ modal(`<div class="modal wide"><div class="mh"><div><h3>${p.name}</h3><div class="msub">${p.desc||''}</div></div><button class="iconbtn" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+ ${P.perms.map(g=>`<div class="grp" style="margin:14px 0 8px">${g.g}</div><div class="permgrid">${g.items.map(it=>`<label class="permrow"><span class="sw ${cur.has(it[0])?'on':''}" data-perm="${it[0]}" ${editar?`onclick="this.classList.toggle('on')" style="cursor:pointer"`:'style="opacity:.85"'}></span>${it[1]}</label>`).join('')}</div>`).join('')}
+ ${editar?'<div class="muted" style="font-size:11px;margin-top:10px">Alterações são aplicadas imediatamente no servidor.</div>':''}
+ <div class="btnrow">${editar?`<button class="btn btn-grad" id="permSave" onclick="savePerms('${k}')">Salvar</button>`:''}<button class="btn btn-line" onclick="closeModal()">${editar?'Cancelar':'Fechar'}</button></div></div>`);
+}
+async function savePerms(k){
+ const perms=[...document.querySelectorAll('.modal .permgrid .sw.on')].map(s=>s.dataset.perm).filter(Boolean);
+ const btn=document.getElementById('permSave');if(btn){btn.disabled=true;btn.textContent='Salvando…';}
+ try{const {ok,data}=await api('/api/admin/perfis/'+k,{method:'PATCH',body:JSON.stringify({perms})});
+  if(!ok)throw new Error(data.error||'falha');
+  closeModal();toast('Permissões do perfil “'+k+'” atualizadas');
+  if(STATE.currentUser&&k===STATE.currentUser.profile){const r=await api('/api/me');if(r.ok){applyMe(r.data);buildShell();}}
+  await loadPerfis();
+ }catch(e){toast('Erro: '+e.message);if(btn){btn.disabled=false;btn.textContent='Salvar';}}
+}
 
 function renderSectors(v){
  v.innerHTML=ph('Setores','Setores com chamados registrados (via chamados_log)')+

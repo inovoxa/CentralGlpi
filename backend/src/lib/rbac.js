@@ -22,6 +22,7 @@ export const PERMS = [
   ]},
   { g: 'Auditoria', items: [
     ['view_audit', 'Ver auditoria'],
+    ['manage_approvers', 'Gerenciar aprovadores (AD)'],
     ['export', 'Exportar relatórios/logs'],
   ]},
 ];
@@ -39,7 +40,7 @@ export const PROFILES = {
     name: 'Coordenador TI',
     desc: 'Aprova, executa, edita SLAs e vê auditoria',
     color: 'var(--s)',
-    perms: ['view_all', 'move_kanban', 'assume', 'send_msg', 'update_status', 'approve', 'execute_ad', 'edit_sla', 'view_audit', 'export', 'manage_users', 'manage_sectors'],
+    perms: ['view_all', 'move_kanban', 'assume', 'send_msg', 'update_status', 'approve', 'execute_ad', 'edit_sla', 'view_audit', 'manage_approvers', 'export', 'manage_users', 'manage_sectors'],
   },
   tecnico: {
     name: 'Técnico',
@@ -57,19 +58,40 @@ export const PROFILES = {
     name: 'Auditor',
     desc: 'Somente leitura — consulta e exporta logs',
     color: '#9db4ff',
-    perms: ['view_all', 'view_audit', 'export'],
+    perms: ['view_all', 'view_audit', 'manage_approvers', 'export'],
   },
 };
+
+// Overrides editáveis (persistidos em glpi_n8n.app_perfil_perms). Vazio => usa os defaults.
+const overrides = {};
+export function loadOverrides(rows) {
+  for (const r of rows || []) {
+    if (PROFILES[r.profile]) {
+      const perms = Array.isArray(r.perms) ? r.perms : (typeof r.perms === 'string' ? JSON.parse(r.perms) : []);
+      overrides[r.profile] = perms.filter((p) => ALLPERMS.includes(p));
+    }
+  }
+}
+export function setOverride(profile, perms) {
+  overrides[profile] = (perms || []).filter((p) => ALLPERMS.includes(p));
+}
+export function effectivePerms(profile) {
+  return overrides[profile] || PROFILES[profile]?.perms || [];
+}
 
 export function profileExists(p) {
   return Object.prototype.hasOwnProperty.call(PROFILES, p);
 }
 
 export function can(profile, perm) {
-  return !!PROFILES[profile]?.perms.includes(perm);
+  return effectivePerms(profile).includes(perm);
 }
 
-// Forma enviada ao front em /api/me (perfis + permissões + catálogo de perms).
+// Forma enviada ao front em /api/me (perfis + permissões efetivas + catálogo de perms).
 export function rbacCatalog() {
-  return { profiles: PROFILES, perms: PERMS, allperms: ALLPERMS };
+  const profiles = {};
+  for (const [k, p] of Object.entries(PROFILES)) {
+    profiles[k] = { name: p.name, desc: p.desc, color: p.color, perms: effectivePerms(k) };
+  }
+  return { profiles, perms: PERMS, allperms: ALLPERMS };
 }

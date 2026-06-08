@@ -85,6 +85,17 @@ if (config.runMigrationsOnStart) {
   }
 }
 
+// Carrega overrides de permissões por perfil (se houver). Falha não impede o boot.
+try {
+  const { pgQuery } = await import('./db/postgres.js');
+  const { loadOverrides } = await import('./lib/rbac.js');
+  const { rows } = await pgQuery('SELECT profile, perms FROM glpi_n8n.app_perfil_perms');
+  loadOverrides(rows);
+  if (rows.length) app.log.info(`[rbac] ${rows.length} perfil(is) com permissões customizadas`);
+} catch (err) {
+  app.log.warn(`[rbac] sem overrides de permissão (${err.message})`);
+}
+
 try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Central GLPI backend em http://${config.host}:${config.port} (estático: ${config.staticDir})`);
