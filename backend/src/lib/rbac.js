@@ -60,6 +60,12 @@ export const PROFILES = {
     color: '#9db4ff',
     perms: ['view_all', 'view_audit', 'manage_approvers', 'export'],
   },
+  aprovador: {
+    name: 'Aprovador de chamados',
+    desc: 'Acesso restrito: vê apenas a tela de Aprovadores de chamado',
+    color: '#c9a227',
+    perms: ['manage_approvers'],
+  },
 };
 
 // Overrides editáveis (persistidos em glpi_n8n.app_perfil_perms). Vazio => usa os defaults.

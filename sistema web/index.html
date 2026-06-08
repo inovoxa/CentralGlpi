@@ -355,9 +355,12 @@ const PROFILES={
  coord:{name:'Coordenador TI',desc:'Aprova, executa, edita SLAs e vê auditoria',color:'var(--s)',perms:['view_all','move_kanban','assume','send_msg','update_status','approve','execute_ad','edit_sla','view_audit','manage_approvers','export','manage_users','manage_sectors']},
  tecnico:{name:'Técnico',desc:'Atende chamados atribuídos e a fila geral',color:'var(--a)',perms:['view_all','move_kanban','assume','send_msg','update_status']},
  gestor:{name:'Gestor de Setor',desc:'Aprova chamados do próprio setor, sem ações técnicas',color:'var(--warn)',perms:['view_sector','approve']},
- auditor:{name:'Auditor',desc:'Somente leitura — consulta e exporta logs',color:'#9db4ff',perms:['view_all','view_audit','manage_approvers','export']}
+ auditor:{name:'Auditor',desc:'Somente leitura — consulta e exporta logs',color:'#9db4ff',perms:['view_all','view_audit','manage_approvers','export']},
+ aprovador:{name:'Aprovador de chamados',desc:'Acesso restrito: vê apenas a tela de Aprovadores de chamado',color:'#c9a227',perms:['manage_approvers']}
 };
 function can(p){const pr=effectiveProfile();return PROFILES[pr]?.perms.includes(p)}
+function canNeed(need){return !need||(Array.isArray(need)?need.some(can):can(need))}
+function firstNav(){for(const g of NAV){if(g.need&&!g.need.some(can))continue;for(const it of g.items){if(canNeed(it.need))return it.id;}}return 'myprofile'}
 function effectiveProfile(){return STATE.viewAs||STATE.currentUser?.profile}
 
 /* ===================== STATE / MOCK ===================== */
@@ -534,14 +537,14 @@ const EVTYPES=[['criacao','Usuário {n} criado no AD','teal','ti-user-plus'],['a
 /* ===================== NAV CONFIG ===================== */
 const NAV=[
  {g:'Dashboard',items:[
-   {id:'overview',t:'Visão geral',i:'ti-layout-dashboard'},
-   {id:'kanban',t:'Kanban',i:'ti-layout-kanban'},
-   {id:'sla',t:'SLA & Métricas',i:'ti-chart-line'},
-   {id:'live',t:'Atividade ao vivo',i:'ti-activity'}]},
+   {id:'overview',t:'Visão geral',i:'ti-layout-dashboard',need:['view_all','view_sector']},
+   {id:'kanban',t:'Kanban',i:'ti-layout-kanban',need:['view_all','view_sector']},
+   {id:'sla',t:'SLA & Métricas',i:'ti-chart-line',need:['view_all','view_sector']},
+   {id:'live',t:'Atividade ao vivo',i:'ti-activity',need:['view_all','view_sector']}]},
  {g:'Operação',items:[
-   {id:'tickets',t:'Chamados',i:'ti-ticket'},
-   {id:'conversas',t:'Histórico de conversas',i:'ti-messages'},
-   {id:'agente',t:'Agente IA',i:'ti-robot'},
+   {id:'tickets',t:'Chamados',i:'ti-ticket',need:['view_all','view_sector']},
+   {id:'conversas',t:'Histórico de conversas',i:'ti-messages',need:['view_all','view_sector']},
+   {id:'agente',t:'Agente IA',i:'ti-robot',need:['view_all','view_sector']},
    {id:'aprovadores',t:'Aprovadores de chamado',i:'ti-user-shield',need:'manage_approvers'}]},
  {g:'Gestão',need:['manage_users','manage_sectors','config','manage_profiles'],items:[
    {id:'sysusers',t:'Usuários do sistema',i:'ti-users',need:'manage_users'},
@@ -637,7 +640,7 @@ function enterApp(greet){
  document.getElementById('login').style.display='none';
  document.getElementById('app').style.display='flex';
  showStep(1); // pronto para um próximo login
- buildShell();navigate('overview');startClock();startLive();loadNotifs();
+ buildShell();navigate(firstNav());startClock();startLive();loadNotifs();
  if(greet)toast('Bem-vindo, '+STATE.currentUser.nome);
 }
 
@@ -656,7 +659,7 @@ function buildShell(){
  const side=document.getElementById('side');side.innerHTML='';
  NAV.forEach(grp=>{
    if(grp.need&&!grp.need.some(p=>can(p)))return;
-   const visibleItems=grp.items.filter(it=>!it.need||can(it.need));
+   const visibleItems=grp.items.filter(it=>canNeed(it.need));
    if(!visibleItems.length)return;
    side.insertAdjacentHTML('beforeend',`<div class="grp">${grp.g}</div>`);
    visibleItems.forEach(it=>{
@@ -684,17 +687,21 @@ function toggleAvatar(){closeMenus('avatarMenu');const m=document.getElementById
  <div class="navi" onclick="logout()" style="color:var(--err)"><i class="ti ti-logout"></i><span>Sair</span></div>`;
 }
 function toggleViewAsSub(){document.getElementById('viewasSub').classList.toggle('hidden')}
-function setViewAs(p){STATE.viewAs=p;closeMenus();buildShell();navigate('overview');toast(p?'Visualizando como '+PROFILES[p].name:'Voltou ao seu perfil')}
+function setViewAs(p){STATE.viewAs=p;closeMenus();buildShell();navigate(firstNav());toast(p?'Visualizando como '+PROFILES[p].name:'Voltou ao seu perfil')}
 function notifColor(c){return {red:'var(--err)',amber:'var(--warn)',blue:'var(--s)',teal:'var(--p)',pink:'var(--a)'}[c]||'var(--p)'}
 function renderNotifList(){const items=STATE.notifs||[];return '<div style="padding:8px 10px;font-weight:600;border-bottom:1px solid var(--brd);margin-bottom:4px">Notificações</div>'+(items.length?items.map(n=>`<div class="navi"><i class="ti ${n.icon}" style="color:${notifColor(n.color)}"></i><span style="white-space:normal;font-size:12.5px">${n.text}${n.when?` <span class="muted">· ${ovFmtAgo(n.when)}</span>`:''}</span></div>`).join(''):'<div class="muted" style="padding:8px 10px;font-size:12px">Nada novo</div>')}
+function notifSeenKey(){return 'notifSeen:'+((STATE.currentUser&&STATE.currentUser.id)||'x')}
+function notifLastSeen(){return Number(localStorage.getItem(notifSeenKey())||0)}
+function notifUnread(){const seen=notifLastSeen();return (STATE.notifs||[]).filter(n=>n.when&&new Date(n.when).getTime()>seen).length}
 async function loadNotifs(){
  let d=null;try{const r=await api('/api/notificacoes');if(r.ok)d=r.data;}catch(e){}
  STATE.notifs=d?d.items:[];const nc=document.getElementById('notifCount');
- if(nc){const n=d?d.count:0;nc.textContent=Math.min(99,n);nc.style.display=n?'':'none';}
+ if(nc){const n=notifUnread();nc.textContent=Math.min(99,n);nc.style.display=n?'':'none';}
 }
+function notifMarcarVisto(){try{localStorage.setItem(notifSeenKey(),String(Date.now()))}catch(e){}const nc=document.getElementById('notifCount');if(nc)nc.style.display='none';}
 function toggleNotif(){closeMenus('notifMenu');const m=document.getElementById('notifMenu');m.classList.toggle('hidden');if(m.classList.contains('hidden'))return;
  m.innerHTML=renderNotifList();
- loadNotifs().then(()=>{if(!document.getElementById('notifMenu').classList.contains('hidden'))m.innerHTML=renderNotifList();});
+ loadNotifs().then(()=>{if(!document.getElementById('notifMenu').classList.contains('hidden'))m.innerHTML=renderNotifList();notifMarcarVisto();});
 }
 function closeMenus(except){['avatarMenu','notifMenu'].forEach(id=>{if(id!==except)document.getElementById(id).classList.add('hidden')})}
 document.addEventListener('click',e=>{if(!e.target.closest('.iconbtn')&&!e.target.closest('#avatar')&&!e.target.closest('#avatarMenu')&&!e.target.closest('#notifMenu'))closeMenus()});
@@ -702,7 +709,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.iconbtn')&&!e.targe
 /* ===================== ROUTER ===================== */
 function navigate(id){
  const item=NAV.flatMap(g=>g.items).find(i=>i.id===id);
- if(item&&item.need&&!can(item.need)){renderDenied();CURRENT=id;return}
+ if(item&&!canNeed(item.need)){renderDenied();CURRENT=id;return}
  CURRENT=id;setActiveNav();closeMenus();
  const v=document.getElementById('view');
  ({overview:renderOverview,kanban:renderKanban,sla:renderSLA,live:renderLive,tickets:renderTickets,
@@ -791,22 +798,25 @@ async function loadAuditoria(){
  const el=document.getElementById('ovAudit');if(!el)return;
  STATE.audit=d;
  el.innerHTML=d?auditHtml(d):'<div class="muted" style="padding:10px">Auditoria indisponível</div>';
- try{const r=await api('/api/usuarios-logon');STATE.logonUsuarios=(r.ok&&r.data.usuarios)?r.data.usuarios:[];}catch(e){STATE.logonUsuarios=[];}
+ try{const r=await api('/api/usuarios-logon');
+   if(r.ok){STATE.logonUsuarios=r.data.usuarios||[];STATE.logonInfo={configured:r.data.configured!==false,total:(r.data.usuarios||[]).length};}
+   else{STATE.logonUsuarios=[];STATE.logonInfo={erro:(r.data&&(r.data.detail||r.data.error))||'falha ao consultar'};}
+ }catch(e){STATE.logonUsuarios=[];STATE.logonInfo={erro:e.message};}
  renderLogonCols();
 }
 // ----- 4 colunas de logon: busca + filtro 7/30/90 + altura fixa com scroll -----
 const LOGCOLS=[
  {k:'ultimos',t:'Últimos logons',ic:'ti-history',def:'30d'},
  {k:'simult',t:'Logons simultâneos',ic:'ti-devices',def:'30d'},
- {k:'nao',t:'Não logaram',ic:'ti-user-x',def:'7d'},
+ {k:'nao',t:'Usuários que não logaram há',ic:'ti-user-x',def:'7d'},
 ];
 function logonState(k){STATE.logonCol=STATE.logonCol||{};if(!STATE.logonCol[k])STATE.logonCol[k]={p:LOGCOLS.find(c=>c.k===k).def,q:''};return STATE.logonCol[k];}
 function renderLogonCols(){
  const row=document.getElementById('logonRow');if(!row)return;
  row.innerHTML=LOGCOLS.map(c=>{const s=logonState(c.k);
-   const seg=['7d','30d','90d'].map(p=>`<button class="${p===s.p?'on':''}" onclick="logonPeriod('${c.k}','${p}',this)">${p}</button>`).join('');
+   const seg=['2d','7d','30d','90d'].map(p=>`<button class="${p===s.p?'on':''}" onclick="logonPeriod('${c.k}','${p}',this)">${p}</button>`).join('');
    return `<div class="card">
-     <h4 style="margin:0 0 8px;font-size:13px"><i class="ti ${c.ic}"></i> ${c.t}</h4>
+     <h4 style="margin:0 0 8px;font-size:13px"><i class="ti ${c.ic}"></i> ${c.t} <span class="muted" id="colcount_${c.k}" style="font-size:11px"></span></h4>
      <div class="seg seg-sm" style="margin-bottom:8px">${seg}</div>
      <div class="search search-sm" style="margin-bottom:8px"><i class="ti ti-search"></i><input placeholder="Buscar usuário…" value="${(s.q||'').replace(/"/g,'&quot;')}" oninput="logonSearch('${c.k}',this.value)"></div>
      <div class="scrolllist" id="colbody_${c.k}"></div>
@@ -818,16 +828,18 @@ function logonPeriod(k,p,btn){logonState(k).p=p;if(btn){btn.parentNode.querySele
 function logonMap(){const m={};for(const u of (STATE.logonUsuarios||[]))m[(u.login||'').toLowerCase()]=u.ultimoLogon;return m;}
 function renderColBody(k){
  const el=document.getElementById('colbody_'+k);if(!el)return;
- const s=logonState(k);const cut=Date.now()-({'7d':7,'30d':30,'90d':90}[s.p])*86400000;
+ const s=logonState(k);const cut=Date.now()-({'2d':2,'7d':7,'30d':30,'90d':90}[s.p]||7)*86400000;
  const q=(s.q||'').toLowerCase();const match=(...v)=>!q||v.some(x=>(x||'').toString().toLowerCase().includes(q));
- const us=STATE.logonUsuarios||[];const L=(STATE.audit&&STATE.audit.logons)||{};let arr=[],html='';
+ const us=STATE.logonUsuarios||[];const info=STATE.logonInfo||{};const L=(STATE.audit&&STATE.audit.logons)||{};let arr=[],html='';
  const rowU=(u)=>`<div class="kv"><span>${userLink(u.login)} <span class="muted" style="font-size:11px">${escapeHtml(u.nome||'')}</span></span><span class="muted mono" style="font-size:11px">${u.ultimoLogon?ovFmtAgo(u.ultimoLogon):'nunca'}</span></div>`;
+ // Mensagem de vazio para colunas baseadas no diretório do AD (quem/nao).
+ const vazioAD=()=>info.configured===false?'AD não configurado':info.erro?('Erro ao consultar o AD: '+info.erro):(!us.length?'O AD não retornou usuários (verifique credenciais/coletor)':'Ninguém no período');
  if(k==='quem'){
    arr=us.filter(u=>{const t=u.ultimoLogon?new Date(u.ultimoLogon).getTime():0;return t>=cut&&match(u.login,u.nome);}).sort((a,b)=>new Date(b.ultimoLogon)-new Date(a.ultimoLogon));
-   html=arr.length?arr.map(rowU).join(''):'<div class="muted" style="font-size:12px;padding:8px">Ninguém no período</div>';
+   html=arr.length?arr.map(rowU).join(''):`<div class="muted" style="font-size:12px;padding:8px">${vazioAD()}</div>`;
  }else if(k==='nao'){
    arr=us.filter(u=>{const t=u.ultimoLogon?new Date(u.ultimoLogon).getTime():0;return t<cut&&match(u.login,u.nome);}).sort((a,b)=>new Date(b.ultimoLogon||0)-new Date(a.ultimoLogon||0));
-   html=arr.length?arr.map(rowU).join(''):'<div class="muted" style="font-size:12px;padding:8px">Ninguém</div>';
+   html=arr.length?arr.map(rowU).join(''):`<div class="muted" style="font-size:12px;padding:8px">${vazioAD()}</div>`;
  }else if(k==='ultimos'){
    arr=(L.ultimos||[]).filter(u=>{const t=u.ocorrido_em?new Date(u.ocorrido_em).getTime():0;return t>=cut&&match(u.usuario,u.computador);});
    html=arr.length?arr.map(u=>`<div class="kv"><span>${userLink(u.usuario)} <span class="muted" style="font-size:11px">${escapeHtml(u.computador||'')}</span></span><span class="muted mono" style="font-size:11px">${ovFmtAgo(u.ocorrido_em)}</span></div>`).join(''):'<div class="muted" style="font-size:12px;padding:8px">Sem registros</div>';
@@ -837,6 +849,7 @@ function renderColBody(k){
    html=arr.length?arr.map(u=>`<div class="kv"><span>${userLink(u.usuario)}</span><span class="badge b-amber">${u.maquinas} máquinas</span></div>`).join(''):'<div class="muted" style="font-size:12px;padding:8px">Nenhum</div>';
  }
  el.innerHTML=html;
+ const cc=document.getElementById('colcount_'+k);if(cc)cc.textContent=arr.length?'· '+arr.length:'';
 }
 function audKpi(ic,c,val,label){return `<div class="card metric"><div class="ic" style="background:${c};color:#04121a"><i class="ti ${ic}"></i></div><div class="v">${val}</div><div class="l">${label}</div></div>`}
 function userLink(u){return `<span class="linklike" onclick="openUserProfile('${(u||'').replace(/'/g,'')}')">${u||'—'}</span>`}
