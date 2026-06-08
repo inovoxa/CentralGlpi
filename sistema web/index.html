@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Central de Operações GLPI · Prefeitura de Araraquara</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2300D9C0'/%3E%3Ctext x='16' y='23' font-size='20' font-weight='bold' font-family='Arial,sans-serif' fill='%23062b27' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
+<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2300D9C0'/%3E%3Ctext x='16' y='23' font-size='20' font-weight='bold' font-family='Arial,sans-serif' fill='%23062b27' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -262,7 +262,7 @@ select.inp{appearance:none;cursor:pointer}
   <div class="login-card">
     <img class="brasao" src="BrasaoAraraquara.png" alt="Brasão de Araraquara">
     <h1>Central GLPI</h1>
-    <div class="sub">Prefeitura Municipal de Araraquara</div>
+    <div class="sub" data-brand-org>Prefeitura Municipal de Araraquara</div>
     <!-- Etapa 1: e-mail + senha -->
     <div id="loginStep1">
       <div class="field">
@@ -309,7 +309,7 @@ select.inp{appearance:none;cursor:pointer}
 <div id="app">
   <header class="top">
     <img class="brasao" src="BrasaoAraraquara.png" alt="Brasão">
-    <div class="brand">Central GLPI<small>Prefeitura Municipal de Araraquara</small></div>
+    <div class="brand">Central GLPI<small data-brand-org>Prefeitura Municipal de Araraquara</small></div>
     <button class="iconbtn" onclick="toggleSide()" title="Menu"><i class="ti ti-layout-sidebar-left-collapse"></i></button>
     <div class="live"><span class="dot"></span> ao vivo · <span id="clock" class="mono"></span></div>
     <div class="spacer"></div>
@@ -346,13 +346,13 @@ const NOW=new Date(2026,5,1,9,41); // 1 jun 2026 09:41
 const PERMS=[
  {g:'Operação',items:[['view_all','Ver todos os chamados'],['view_sector','Ver chamados do setor'],['move_kanban','Mover cards no Kanban'],['assume','Assumir conversas'],['send_msg','Responder no chat'],['update_status','Atualizar status']]},
  {g:'Aprovação & Execução',items:[['approve','Aprovar chamados'],['execute_ad','Executar no AD/Exchange'],['edit_sla','Editar SLAs']]},
- {g:'Gestão',items:[['manage_users','Cadastrar usuários do sistema'],['manage_profiles','Gerenciar perfis'],['manage_sectors','Gerenciar setores'],['config','Configurações do sistema']]},
+ {g:'Gestão',items:[['manage_users','Cadastrar usuários do sistema'],['manage_profiles','Gerenciar perfis'],['manage_sectors','Gerenciar setores'],['manage_branding','Personalização (marca)'],['config','Configurações do sistema']]},
  {g:'Auditoria',items:[['view_audit','Ver auditoria'],['manage_approvers','Gerenciar aprovadores (AD)'],['export','Exportar relatórios/logs']]}
 ];
 const ALLPERMS=PERMS.flatMap(x=>x.items.map(i=>i[0]));
 const PROFILES={
  admin:{name:'Admin',desc:'Acesso total ao sistema, incluindo cadastros e configuração',color:'var(--p)',perms:[...ALLPERMS]},
- coord:{name:'Coordenador TI',desc:'Aprova, executa, edita SLAs e vê auditoria',color:'var(--s)',perms:['view_all','move_kanban','assume','send_msg','update_status','approve','execute_ad','edit_sla','view_audit','manage_approvers','export','manage_users','manage_sectors']},
+ coord:{name:'Coordenador TI',desc:'Aprova, executa, edita SLAs e vê auditoria',color:'var(--s)',perms:['view_all','move_kanban','assume','send_msg','update_status','approve','execute_ad','edit_sla','view_audit','manage_approvers','export','manage_users','manage_sectors','manage_branding']},
  tecnico:{name:'Técnico',desc:'Atende chamados atribuídos e a fila geral',color:'var(--a)',perms:['view_all','move_kanban','assume','send_msg','update_status']},
  gestor:{name:'Gestor de Setor',desc:'Aprova chamados do próprio setor, sem ações técnicas',color:'var(--warn)',perms:['view_sector','approve']},
  auditor:{name:'Auditor',desc:'Somente leitura — consulta e exporta logs',color:'#9db4ff',perms:['view_all','view_audit','manage_approvers','export']},
@@ -546,11 +546,11 @@ const NAV=[
    {id:'conversas',t:'Histórico de conversas',i:'ti-messages',need:['view_all','view_sector']},
    {id:'agente',t:'Agente IA',i:'ti-robot',need:['view_all','view_sector']},
    {id:'aprovadores',t:'Aprovadores de chamado',i:'ti-user-shield',need:'manage_approvers'}]},
- {g:'Gestão',need:['manage_users','manage_sectors','config','manage_profiles'],items:[
+ {g:'Gestão',need:['manage_users','manage_sectors','config','manage_profiles','manage_branding'],items:[
    {id:'sysusers',t:'Usuários do sistema',i:'ti-users',need:'manage_users'},
    {id:'profiles',t:'Perfis e permissões',i:'ti-shield-lock',need:'manage_profiles'},
    {id:'sectors',t:'Setores',i:'ti-building',need:'manage_sectors'},
-   {id:'config',t:'Configurações',i:'ti-settings',need:'config'}]},
+   {id:'config',t:'Configurações',i:'ti-settings',need:['config','manage_branding']}]},
  {g:'Auditoria',need:['view_audit'],items:[
    {id:'accesslogs',t:'Logs de acesso',i:'ti-login',need:'view_audit'},
    {id:'oplogs',t:'Logs de operação',i:'ti-list-check',need:'view_audit'},
@@ -567,6 +567,17 @@ async function api(path,opts={}){
  const res=await fetch(path,{credentials:'same-origin',headers,...opts});
  let data=null;try{data=await res.json()}catch{}
  return {ok:res.ok,status:res.status,data:data||{}};
+}
+// ----- Personalização (white-label) -----
+async function loadBranding(){let b=null;try{const r=await api('/api/branding');if(r.ok)b=r.data;}catch(e){}applyBranding(b||{});}
+function applyBranding(b){
+ b=b||{};STATE.branding=b;
+ if(b.favicon){const f=document.getElementById('favicon');if(f){f.href=b.favicon;f.type=b.favicon.startsWith('data:image/svg')?'image/svg+xml':'image/png';}}
+ if(b.logo)document.querySelectorAll('img.brasao').forEach(i=>i.src=b.logo);
+ if(b.orgNome)document.querySelectorAll('[data-brand-org]').forEach(e=>e.textContent=b.orgNome);
+ if(b.cor){const s=document.documentElement.style;s.setProperty('--p',b.cor);s.setProperty('--g1','linear-gradient(135deg,'+b.cor+','+b.cor+'cc)');}
+ const lg=document.getElementById('login');
+ if(lg){if(b.loginImg){lg.style.backgroundImage='linear-gradient(rgba(5,8,20,.80),rgba(5,8,20,.92)),url("'+b.loginImg+'")';lg.style.backgroundSize='cover';lg.style.backgroundPosition='center';}else{lg.style.backgroundImage='';}}
 }
 function lgError(msg){const e=document.getElementById('lgErr');if(!msg){e.classList.add('hidden');return}e.textContent=msg;e.classList.remove('hidden')}
 function showStep(n){document.getElementById('loginStep1').classList.toggle('hidden',n!==1);document.getElementById('loginStep2').classList.toggle('hidden',n!==2)}
@@ -683,7 +694,7 @@ function toggleAvatar(){closeMenus('avatarMenu');const m=document.getElementById
  <div class="navi" onclick="navigate('myprofile');closeMenus()"><i class="ti ti-user"></i><span>Meu perfil</span></div>
  ${STATE.currentUser.profile==='admin'?`<div class="navi" onclick="toggleViewAsSub()"><i class="ti ti-eye"></i><span>Visualizar como ▾</span></div>
  <div id="viewasSub" class="hidden" style="padding-left:8px">${Object.keys(PROFILES).map(p=>`<div class="navi" onclick="setViewAs('${p}')"><i class="ti ti-point"></i><span>${PROFILES[p].name}</span></div>`).join('')}</div>`:''}
- ${can('config')?'<div class="navi" onclick="navigate(\'config\');closeMenus()"><i class="ti ti-settings"></i><span>Configurações</span></div>':''}
+ ${(can('config')||can('manage_branding'))?'<div class="navi" onclick="navigate(\'config\');closeMenus()"><i class="ti ti-settings"></i><span>Configurações</span></div>':''}
  <div class="navi" onclick="logout()" style="color:var(--err)"><i class="ti ti-logout"></i><span>Sair</span></div>`;
 }
 function toggleViewAsSub(){document.getElementById('viewasSub').classList.toggle('hidden')}
@@ -754,6 +765,7 @@ function renderOverview(v){
    </div>
    <div id="ovAudit"><div class="muted" style="padding:10px">Carregando auditoria…</div></div>
  </div>`:''}`;
+ const _bn=STATE.branding&&STATE.branding.banner;if(_bn){const hero=v.querySelector('.hero');if(hero){hero.style.backgroundImage='linear-gradient(rgba(8,12,30,.45),rgba(8,12,30,.85)),url("'+_bn+'")';hero.style.backgroundSize='cover';hero.style.backgroundPosition='center';}}
  loadOverview();
  if(can('view_audit'))loadAuditoria();
 }
@@ -1395,8 +1407,42 @@ async function loadSectors(){
 }
 
 function renderConfig(v){
- v.innerHTML=ph('Configurações','Status e parâmetros do sistema')+`<div id="cfgBody"><div class="muted" style="padding:10px">Carregando…</div></div>`;
- loadConfig();
+ v.innerHTML=ph('Configurações','Status e parâmetros do sistema')+
+  (can('manage_branding')?'<div id="brandBox"></div>':'')+
+  (can('config')?`<div id="cfgBody"><div class="muted" style="padding:10px">Carregando…</div></div>`:'');
+ if(can('manage_branding'))renderBranding();
+ if(can('config'))loadConfig();
+}
+async function renderBranding(){
+ if(!STATE.branding)await loadBranding();
+ STATE.brandDraft=Object.assign({orgNome:'',cor:'',logo:'',favicon:'',banner:'',loginImg:''},STATE.branding||{});
+ paintBranding();
+}
+function paintBranding(){
+ const el=document.getElementById('brandBox');if(!el)return;const d=STATE.brandDraft;
+ const prev=(k)=>`background:#0b1026;${d[k]?`background-image:url('${d[k]}');`:''}background-size:contain;background-repeat:no-repeat;background-position:center`;
+ const img=(k,label,hint)=>`<div class="field"><label>${label}</label><div class="flex center" style="gap:10px">
+   <div style="width:60px;height:60px;border:1px solid var(--brd);border-radius:10px;flex-shrink:0;${prev(k)}"></div>
+   <div style="min-width:0"><input type="file" accept="image/*" onchange="brandPick('${k}',this)" style="font-size:12px"><div class="muted" style="font-size:11px">${hint}${d[k]?` · <a class="linklike" onclick="brandClear('${k}')">remover</a>`:''}</div></div></div></div>`;
+ el.innerHTML=`<div class="card" style="margin-bottom:16px"><h4 class="mb12"><i class="ti ti-palette"></i> Personalização (white-label)</h4>
+   <div class="grid g2">
+     <div class="field"><label>Nome da organização</label><input class="inp" id="brOrg" value="${(d.orgNome||'').replace(/"/g,'&quot;')}" placeholder="Prefeitura de ..."></div>
+     <div class="field"><label>Cor de destaque</label><input class="inp" id="brCor" type="color" value="${d.cor||'#00d9c0'}" style="height:42px;padding:4px;cursor:pointer"></div>
+   </div>
+   <div class="grid g2">${img('logo','Logo','PNG/SVG (sidebar e login)')}${img('favicon','Favicon','quadrado, ícone da aba')}</div>
+   <div class="grid g2">${img('banner','Banner da tela inicial','imagem larga do topo')}${img('loginImg','Imagem da tela de login','fundo do login')}</div>
+   <div class="btnrow"><button class="btn btn-grad" id="brSave" onclick="salvarBranding()"><i class="ti ti-device-floppy"></i> Salvar personalização</button><button class="btn btn-line" onclick="renderBranding()">Descartar</button></div>
+   <div class="muted" style="font-size:11px;margin-top:6px">Imagens ficam embutidas (até ~1,5MB cada) e são aplicadas em todo o sistema, inclusive na tela de login.</div></div>`;
+}
+function brandPick(k,input){const f=input.files&&input.files[0];if(!f)return;if(f.size>1500000){toast('Imagem muito grande (máx ~1,5MB)');input.value='';return;}const fr=new FileReader();fr.onload=()=>{STATE.brandDraft[k]=fr.result;paintBranding();};fr.readAsDataURL(f);}
+function brandClear(k){STATE.brandDraft[k]='';paintBranding();}
+async function salvarBranding(){
+ const d=STATE.brandDraft;d.orgNome=val('brOrg');d.cor=val('brCor');
+ const btn=document.getElementById('brSave');if(btn){btn.disabled=true;btn.textContent='Salvando…';}
+ try{const {ok,data}=await api('/api/admin/branding',{method:'PATCH',body:JSON.stringify(d)});
+  if(!ok)throw new Error(data.error||'falha');
+  toast('Personalização salva e aplicada');await loadBranding();renderBranding();
+ }catch(e){toast('Erro: '+e.message);if(btn){btn.disabled=false;btn.textContent='Salvar personalização';}}
 }
 async function loadConfig(){
  let d=null;try{const r=await api('/api/admin/status');if(r.ok)d=r.data;}catch(e){}
@@ -1516,6 +1562,7 @@ document.getElementById('lgPass').addEventListener('keydown',e=>{if(e.key==='Ent
 
 /* Restaura uma sessão já existente ao abrir a página (cookie httpOnly ainda válido). */
 (async function initSession(){
+ try{await loadBranding();}catch(e){}
  try{const {ok,data}=await api('/api/me');if(ok){applyMe(data);enterApp(false);}}catch(e){}
 })();
 </script>

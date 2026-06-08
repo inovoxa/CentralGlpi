@@ -18,6 +18,7 @@ export const PERMS = [
     ['manage_users', 'Cadastrar usuários do sistema'],
     ['manage_profiles', 'Gerenciar perfis'],
     ['manage_sectors', 'Gerenciar setores'],
+    ['manage_branding', 'Personalização (marca)'],
     ['config', 'Configurações do sistema'],
   ]},
   { g: 'Auditoria', items: [
@@ -40,7 +41,7 @@ export const PROFILES = {
     name: 'Coordenador TI',
     desc: 'Aprova, executa, edita SLAs e vê auditoria',
     color: 'var(--s)',
-    perms: ['view_all', 'move_kanban', 'assume', 'send_msg', 'update_status', 'approve', 'execute_ad', 'edit_sla', 'view_audit', 'manage_approvers', 'export', 'manage_users', 'manage_sectors'],
+    perms: ['view_all', 'move_kanban', 'assume', 'send_msg', 'update_status', 'approve', 'execute_ad', 'edit_sla', 'view_audit', 'manage_approvers', 'export', 'manage_users', 'manage_sectors', 'manage_branding'],
   },
   tecnico: {
     name: 'Técnico',
