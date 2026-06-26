@@ -47,6 +47,8 @@ services:
       CHATWOOT_URL: ${CHATWOOT_URL:-}
       CHATWOOT_TOKEN: ${CHATWOOT_TOKEN:-}
       CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID:-}
+      # Token aceito do proxy do Inovoxachat (Chatwoot) nas rotas GLPI (/api/tickets, /api/agente)
+      CENTRAL_SERVICE_TOKEN: ${CENTRAL_SERVICE_TOKEN:-}
       # Auditoria de AD via SSH ao DC (opcional)
       AD_SSH_HOST: ${AD_SSH_HOST:-}
       AD_SSH_PORT: ${AD_SSH_PORT:-22}

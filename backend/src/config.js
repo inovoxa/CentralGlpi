@@ -35,6 +35,8 @@ export const config = {
   totpEncKey: env.TOTP_ENC_KEY || '',
   totpIssuer: env.TOTP_ISSUER || 'Central GLPI',
   seedDefaultPassword: env.SEED_DEFAULT_PASSWORD || '',
+  // Token de serviço aceito do proxy do Inovoxachat (Chatwoot) nas rotas GLPI.
+  serviceToken: env.CENTRAL_SERVICE_TOKEN || '',
 
   login: {
     maxAttempts: int(env.LOGIN_MAX_ATTEMPTS, 5),

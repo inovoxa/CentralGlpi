@@ -26,9 +26,31 @@ async function authPlugin(fastify) {
     cookie: { cookieName: COOKIE_NAME, signed: false },
   });
 
+  // Rotas GLPI consumidas pelo proxy do Inovoxachat (Chatwoot) via token de serviço.
+  const isGlpiServiceRoute = (url = '') => {
+    const path = url.split('?')[0];
+    return path.startsWith('/api/tickets') || path.startsWith('/api/agente');
+  };
+  // Mapeia o papel do usuário do Chatwoot para um perfil RBAC da Central.
+  // admin -> 'tecnico' (view_all + move_kanban); demais -> 'auditor' (somente leitura).
+  const mapServiceProfile = (role) => ((role || '').toLowerCase() === 'admin' ? 'tecnico' : 'auditor');
+
   // Lê a sessão (se houver) em toda requisição, sem bloquear.
   fastify.decorateRequest('session', null);
   fastify.addHook('onRequest', async (req) => {
+    // 1) Sessão de serviço: proxy do Chatwoot (X-Service-Token), restrito às rotas GLPI.
+    const svcToken = req.headers['x-service-token'];
+    if (svcToken && config.serviceToken && svcToken === config.serviceToken && isGlpiServiceRoute(req.url)) {
+      req.session = {
+        stage: 'authed',
+        service: true,
+        uid: req.headers['x-user-id'] || null,
+        email: req.headers['x-user-email'] || null,
+        profile: mapServiceProfile(req.headers['x-user-role']),
+      };
+      return;
+    }
+    // 2) Sessão normal por cookie JWT.
     try {
       req.session = await req.jwtVerify();
     } catch {
