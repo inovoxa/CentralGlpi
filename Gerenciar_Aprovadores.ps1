@@ -8,7 +8,7 @@
   Gerenciar_Aprovadores.ps1 -Action Add    -Login jsilva
   Gerenciar_Aprovadores.ps1 -Action Remove -Login jsilva
 
-  Sempre retorna JSON com a lista ATUAL do grupo: { grupo, membros:[{login,nome,departamento,email,habilitado}] }
+  Sempre retorna JSON com a lista ATUAL do grupo: { grupo, membros:[{login,nome,departamento,email,office,mobile,habilitado}] }
   Em erro: { erro: "..." }.
 
 .NOTES
@@ -48,12 +48,14 @@ try {
     Get-ADGroupMember -Identity $Grupo |
       Where-Object { $_.objectClass -eq 'user' } |
       ForEach-Object {
-        $d = Get-ADUser -Identity $_.SamAccountName -Properties Department, Enabled, Mail
+        $d = Get-ADUser -Identity $_.SamAccountName -Properties Department, Enabled, Mail, Office, MobilePhone
         @{
           login        = $d.SamAccountName
           nome         = $d.Name
           departamento = $d.Department
           email        = $d.Mail
+          office       = $d.Office
+          mobile       = $d.MobilePhone
           habilitado   = [bool]$d.Enabled
         }
       } | Sort-Object { $_.nome }
