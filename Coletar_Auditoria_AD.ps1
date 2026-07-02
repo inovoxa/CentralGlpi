@@ -43,18 +43,31 @@ try {
   if ($User) {
     Assert-IdentificadorSeguro $User
     Import-Module ActiveDirectory -ErrorAction Stop
-    $u = Get-ADUser -Identity $User -Properties Department,Title,PasswordLastSet,LastLogonDate,LockedOut,Enabled,MemberOf
-    $grupos = @($u.MemberOf | ForEach-Object { ($_ -split ',')[0] -replace '^CN=', '' })
+    $props = 'Department', 'Title', 'PasswordLastSet', 'LastLogonDate', 'LockedOut', 'Enabled', 'MemberOf',
+             'whenCreated', 'DistinguishedName', 'CanonicalName', 'MobilePhone', 'ScriptPath', 'Company',
+             'EmailAddress', 'BadLogonCount', 'LastBadPasswordAttempt', 'Office'
+    $u = Get-ADUser -Identity $User -Properties $props
+    $grupos = @($u.MemberOf | ForEach-Object { ($_ -split ',')[0] -replace '^CN=', '' } | Sort-Object)
     Write-Json @{
-      login              = $u.SamAccountName
-      nome               = $u.Name
-      departamento       = $u.Department
-      cargo              = $u.Title
-      habilitado         = [bool]$u.Enabled
-      bloqueado          = [bool]$u.LockedOut
-      ultima_troca_senha = if ($u.PasswordLastSet) { $u.PasswordLastSet.ToString('o') } else { $null }
-      ultimo_logon_ad    = if ($u.LastLogonDate)   { $u.LastLogonDate.ToString('o') }   else { $null }
-      grupos             = $grupos
+      login                  = $u.SamAccountName
+      nome                   = $u.Name
+      email                  = $u.EmailAddress
+      departamento           = $u.Department
+      cargo                  = $u.Title
+      organization           = $u.Company
+      escritorio             = $u.Office
+      mobile                 = $u.MobilePhone
+      logon_script           = $u.ScriptPath
+      habilitado             = [bool]$u.Enabled
+      bloqueado              = [bool]$u.LockedOut
+      dn                     = $u.DistinguishedName
+      arvore                 = $u.CanonicalName
+      data_criacao           = if ($u.whenCreated)            { $u.whenCreated.ToString('o') }            else { $null }
+      ultima_troca_senha     = if ($u.PasswordLastSet)        { $u.PasswordLastSet.ToString('o') }        else { $null }
+      ultimo_logon_ad        = if ($u.LastLogonDate)          { $u.LastLogonDate.ToString('o') }          else { $null }
+      ultima_senha_incorreta = if ($u.LastBadPasswordAttempt) { $u.LastBadPasswordAttempt.ToString('o') } else { $null }
+      logins_sem_sucesso     = [int]$u.BadLogonCount
+      grupos                 = $grupos
     }
   }
 
