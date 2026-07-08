@@ -1,0 +1,337 @@
+{
+  "name": "Soffner - Atendimento WhatsApp (Suporte/Comercial)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "soffner-atendimento",
+        "options": {},
+        "responseMode": "onReceived"
+      },
+      "id": "webhook_chatwoot",
+      "name": "Webhook Chatwoot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        300
+      ],
+      "webhookId": "soffner-atendimento"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "account_id",
+              "type": "string",
+              "value": "={{ $json.body.account.id }}"
+            },
+            {
+              "id": "a2",
+              "name": "conversation_id",
+              "type": "string",
+              "value": "={{ $json.body.conversation.id || $json.body.id }}"
+            },
+            {
+              "id": "a3",
+              "name": "mensagem",
+              "type": "string",
+              "value": "={{ $json.body.content }}"
+            },
+            {
+              "id": "a4",
+              "name": "message_type",
+              "type": "string",
+              "value": "={{ $json.body.message_type }}"
+            },
+            {
+              "id": "a5",
+              "name": "sender_type",
+              "type": "string",
+              "value": "={{ $json.body.sender?.type || $json.body.conversation?.meta?.sender?.type }}"
+            },
+            {
+              "id": "a6",
+              "name": "contato_nome",
+              "type": "string",
+              "value": "={{ $json.body.sender?.name }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalizar",
+      "name": "Normalizar",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.message_type }}",
+              "rightValue": "incoming"
+            }
+          ]
+        }
+      },
+      "id": "e_cliente?",
+      "name": "E cliente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-chat",
+        "options": {}
+      },
+      "id": "openrouter_deepseek",
+      "name": "OpenRouter DeepSeek",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        500
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "REPLACE_OPENROUTER",
+          "name": "OpenRouter account GLPI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.mensagem }}",
+        "options": {
+          "systemMessage": "Voce e o assistente virtual da Soffner, empresa de locacao de equipamentos de tecnologia (impressoras, notebooks, desktops, monitores e afins). Voce atende clientes pelo WhatsApp para dois tipos de demanda: SUPORTE tecnico de equipamentos locados e COMERCIAL (novas locacoes, orcamentos, renovacoes).\n\nSeu objetivo e conduzir a conversa de forma cordial e objetiva, coletando as informacoes abaixo. Faca UMA pergunta por vez, nao repita o que ja foi respondido e nunca invente dados.\n\nINFORMACOES A COLETAR:\n1. nome do solicitante\n2. empresa (razao social ou nome) e, se possivel, o CNPJ\n3. tipo_atendimento: 'suporte' ou 'comercial'\n4. equipamento envolvido (ex.: impressora, notebook)\n5. numero de serie ou patrimonio do equipamento (quando suporte)\n6. urgencia: 'baixa', 'media' ou 'alta'\n7. descricao do problema (suporte) ou do pedido (comercial)\n8. contato_retorno (telefone ou email para retorno)\n\nDEFINICAO DE STATUS DA CONVERSA (controla o Kanban):\n- 'open'    -> ainda coletando informacoes com o cliente\n- 'pending' -> coleta concluida; aguardando um atendente humano assumir\n- 'resolved'-> duvida simples ja resolvida por voce, sem necessidade de humano\n\nQuando tiver TODAS as informacoes necessarias, defina status='pending' e informe ao cliente que um atendente dara sequencia. Se for apenas uma duvida simples que voce mesmo resolveu, use status='resolved'. Enquanto faltar informacao, use status='open'.\n\nRESPONDA SEMPRE E SOMENTE com um JSON valido, sem texto fora dele, no formato:\n{\n  \"resposta\": \"mensagem a enviar ao cliente no WhatsApp\",\n  \"status\": \"open|pending|resolved\",\n  \"atributos\": {\n    \"nome\": \"\", \"empresa\": \"\", \"cnpj\": \"\", \"tipo_atendimento\": \"\",\n    \"equipamento\": \"\", \"serie_patrimonio\": \"\", \"urgencia\": \"\",\n    \"descricao\": \"\", \"contato_retorno\": \"\"\n  }\n}\nPreencha em 'atributos' apenas os campos ja conhecidos; deixe os demais como string vazia."
+        }
+      },
+      "id": "assistente_soffner",
+      "name": "Assistente Soffner",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const raw = $json.output || $json.text || '';\nlet data;\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  data = JSON.parse(m ? m[0] : raw);\n} catch (e) {\n  data = { resposta: raw, status: 'open', atributos: {} };\n}\nconst src = $('Normalizar').first().json;\nreturn [{ json: { ...data, account_id: src.account_id, conversation_id: src.conversation_id } }];"
+      },
+      "id": "parse_ia",
+      "name": "Parse IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHATWOOT_URL }}/api/v1/accounts/{{ $json.account_id }}/conversations/{{ $json.conversation_id }}/custom_attributes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $env.CHATWOOT_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_attributes: $json.atributos }) }}",
+        "options": {}
+      },
+      "id": "salvar_atributos",
+      "name": "Salvar atributos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHATWOOT_URL }}/api/v1/accounts/{{ $('Parse IA').first().json.account_id }}/conversations/{{ $('Parse IA').first().json.conversation_id }}/toggle_status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $env.CHATWOOT_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: $('Parse IA').first().json.status }) }}",
+        "options": {}
+      },
+      "id": "atualizar_status",
+      "name": "Atualizar status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHATWOOT_URL }}/api/v1/accounts/{{ $('Parse IA').first().json.account_id }}/conversations/{{ $('Parse IA').first().json.conversation_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $env.CHATWOOT_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: $('Parse IA').first().json.resposta, message_type: 'outgoing' }) }}",
+        "options": {}
+      },
+      "id": "responder_cliente",
+      "name": "Responder cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        180
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Chatwoot": {
+      "main": [
+        [
+          {
+            "node": "Normalizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar": {
+      "main": [
+        [
+          {
+            "node": "E cliente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E cliente?": {
+      "main": [
+        [
+          {
+            "node": "Assistente Soffner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "OpenRouter DeepSeek": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Assistente Soffner",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assistente Soffner": {
+      "main": [
+        [
+          {
+            "node": "Parse IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse IA": {
+      "main": [
+        [
+          {
+            "node": "Salvar atributos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar atributos": {
+      "main": [
+        [
+          {
+            "node": "Atualizar status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar status": {
+      "main": [
+        [
+          {
+            "node": "Responder cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateId": "soffner-atendimento"
+  },
+  "tags": []
+}
