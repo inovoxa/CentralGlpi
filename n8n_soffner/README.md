@@ -19,12 +19,29 @@ WhatsApp → Inovoxachat (Chatwoot) ──webhook(message_created)──► n8n
                                               │
                                         Parse IA (JSON)
                                               │
-              Salvar atributos → Atualizar status → Responder cliente
-                 (custom_attributes)   (toggle_status)     (messages)
+                                      Salvar atributos
+                                              │
+                                       Tipo definido? ──não──┐
+                                              │ sim          │
+                                       Aplicar etiqueta      │
+                                       (suporte/comercial)   │
+                                              ▼              ▼
+                                        Atualizar status → Responder cliente
+                                        (toggle_status)      (messages)
 ```
 
-O nó **Atualizar status** é o que movimenta o Kanban: ao mudar o status da
-conversa, a Fase B do Kanban (mapa `mapped_status`) leva o card ao estágio certo.
+**Dois movimentos, dois mecanismos (caminho A — etiqueta + automação):**
+
+1. **Roteamento entre funis** (Suporte vs Comercial): assim que o assistente
+   identifica o `tipo_atendimento`, o nó **Aplicar etiqueta** coloca a etiqueta
+   `suporte` ou `comercial` na conversa. Uma **regra de automação** (ação
+   "Mover para estágio do funil") leva o card ao estágio inicial do funil certo.
+2. **Avanço dentro do funil**: o nó **Atualizar status** muda o status da
+   conversa e a Fase B do Kanban (mapa `mapped_status`) move o card entre as
+   colunas daquele funil.
+
+Assim o assistente lida com **múltiplos funis por cliente**: a etiqueta escolhe o
+funil, o status escolhe a coluna.
 
 ## Dados coletados (gravados em custom_attributes da conversa)
 
@@ -64,14 +81,27 @@ Crie os **Custom Attributes** de conversa com as mesmas chaves acima
 formatados na barra lateral da conversa. Sem isso, os valores ainda são
 gravados, mas exibidos como chave/valor cru.
 
-### 5. Kanban — funil e mapa de status
-No Kanban do Inovoxachat, crie um funil (ex.: template **Suporte**) vinculado à
-inbox de WhatsApp da Soffner e, em **Configurar**, mapeie os estágios aos status:
+### 5. Kanban — funis e mapa de status
+Crie os funis (ex.: **Funil Suporte** e **Funil Comercial**), ambos vinculados à
+inbox de WhatsApp da Soffner. Em cada um, **Configurar → mapeie os estágios aos
+status**:
 - estágio inicial → `open`
 - um estágio → `pending` (aguardando atendente)
 - estágio final → `resolved`
 
-Assim os cards andam sozinhos conforme o assistente muda o status.
+Assim os cards avançam sozinhos dentro do funil conforme o assistente muda o status.
+
+### 6. Automação — roteamento por etiqueta (caminho A)
+Crie as etiquetas `suporte` e `comercial` (Configurações → Etiquetas) e duas
+**regras de automação** (Configurações → Automação), evento *Conversa atualizada*:
+
+| Condição | Ação |
+|---|---|
+| Etiqueta contém `comercial` | Mover para estágio do funil → estágio inicial do **Funil Comercial** |
+| Etiqueta contém `suporte`   | Mover para estágio do funil → estágio inicial do **Funil Suporte** |
+
+O assistente aplica a etiqueta; a automação leva o card ao funil certo. Depois de
+roteado, o status (Fase B) cuida do avanço dentro daquele funil.
 
 ## Observações
 

@@ -127,7 +127,7 @@
         "promptType": "define",
         "text": "={{ $json.mensagem }}",
         "options": {
-          "systemMessage": "Voce e o assistente virtual da Soffner, empresa de locacao de equipamentos de tecnologia (impressoras, notebooks, desktops, monitores e afins). Voce atende clientes pelo WhatsApp para dois tipos de demanda: SUPORTE tecnico de equipamentos locados e COMERCIAL (novas locacoes, orcamentos, renovacoes).\n\nSeu objetivo e conduzir a conversa de forma cordial e objetiva, coletando as informacoes abaixo. Faca UMA pergunta por vez, nao repita o que ja foi respondido e nunca invente dados.\n\nINFORMACOES A COLETAR:\n1. nome do solicitante\n2. empresa (razao social ou nome) e, se possivel, o CNPJ\n3. tipo_atendimento: 'suporte' ou 'comercial'\n4. equipamento envolvido (ex.: impressora, notebook)\n5. numero de serie ou patrimonio do equipamento (quando suporte)\n6. urgencia: 'baixa', 'media' ou 'alta'\n7. descricao do problema (suporte) ou do pedido (comercial)\n8. contato_retorno (telefone ou email para retorno)\n\nDEFINICAO DE STATUS DA CONVERSA (controla o Kanban):\n- 'open'    -> ainda coletando informacoes com o cliente\n- 'pending' -> coleta concluida; aguardando um atendente humano assumir\n- 'resolved'-> duvida simples ja resolvida por voce, sem necessidade de humano\n\nQuando tiver TODAS as informacoes necessarias, defina status='pending' e informe ao cliente que um atendente dara sequencia. Se for apenas uma duvida simples que voce mesmo resolveu, use status='resolved'. Enquanto faltar informacao, use status='open'.\n\nRESPONDA SEMPRE E SOMENTE com um JSON valido, sem texto fora dele, no formato:\n{\n  \"resposta\": \"mensagem a enviar ao cliente no WhatsApp\",\n  \"status\": \"open|pending|resolved\",\n  \"atributos\": {\n    \"nome\": \"\", \"empresa\": \"\", \"cnpj\": \"\", \"tipo_atendimento\": \"\",\n    \"equipamento\": \"\", \"serie_patrimonio\": \"\", \"urgencia\": \"\",\n    \"descricao\": \"\", \"contato_retorno\": \"\"\n  }\n}\nPreencha em 'atributos' apenas os campos ja conhecidos; deixe os demais como string vazia."
+          "systemMessage": "Voce e o assistente virtual da Soffner, empresa de locacao de equipamentos de tecnologia (impressoras, notebooks, desktops, monitores e afins). Voce atende clientes pelo WhatsApp para dois tipos de demanda: SUPORTE tecnico de equipamentos locados e COMERCIAL (novas locacoes, orcamentos, renovacoes).\n\nSeu objetivo e conduzir a conversa de forma cordial e objetiva, coletando as informacoes abaixo. Faca UMA pergunta por vez, nao repita o que ja foi respondido e nunca invente dados.\n\nINFORMACOES A COLETAR:\n1. nome do solicitante\n2. empresa (razao social ou nome) e, se possivel, o CNPJ\n3. tipo_atendimento: 'suporte' ou 'comercial' (IDENTIFIQUE ISSO O QUANTO ANTES, logo nas primeiras mensagens; use exatamente 'suporte' ou 'comercial' em minusculas, pois esse valor vira a etiqueta que direciona o atendimento ao funil correto)\n4. equipamento envolvido (ex.: impressora, notebook)\n5. numero de serie ou patrimonio do equipamento (quando suporte)\n6. urgencia: 'baixa', 'media' ou 'alta'\n7. descricao do problema (suporte) ou do pedido (comercial)\n8. contato_retorno (telefone ou email para retorno)\n\nDEFINICAO DE STATUS DA CONVERSA (controla o Kanban):\n- 'open'    -> ainda coletando informacoes com o cliente\n- 'pending' -> coleta concluida; aguardando um atendente humano assumir\n- 'resolved'-> duvida simples ja resolvida por voce, sem necessidade de humano\n\nQuando tiver TODAS as informacoes necessarias, defina status='pending' e informe ao cliente que um atendente dara sequencia. Se for apenas uma duvida simples que voce mesmo resolveu, use status='resolved'. Enquanto faltar informacao, use status='open'.\n\nRESPONDA SEMPRE E SOMENTE com um JSON valido, sem texto fora dele, no formato:\n{\n  \"resposta\": \"mensagem a enviar ao cliente no WhatsApp\",\n  \"status\": \"open|pending|resolved\",\n  \"atributos\": {\n    \"nome\": \"\", \"empresa\": \"\", \"cnpj\": \"\", \"tipo_atendimento\": \"\",\n    \"equipamento\": \"\", \"serie_patrimonio\": \"\", \"urgencia\": \"\",\n    \"descricao\": \"\", \"contato_retorno\": \"\"\n  }\n}\nPreencha em 'atributos' apenas os campos ja conhecidos; deixe os demais como string vazia."
         }
       },
       "id": "assistente_soffner",
@@ -177,6 +177,72 @@
       "typeVersion": 4.2,
       "position": [
         200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "t1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $('Parse IA').first().json.atributos.tipo_atendimento }}",
+              "rightValue": "suporte"
+            },
+            {
+              "id": "t2",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $('Parse IA').first().json.atributos.tipo_atendimento }}",
+              "rightValue": "comercial"
+            }
+          ]
+        }
+      },
+      "id": "tipo_definido?",
+      "name": "Tipo definido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CHATWOOT_URL }}/api/v1/accounts/{{ $('Parse IA').first().json.account_id }}/conversations/{{ $('Parse IA').first().json.conversation_id }}/labels",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $env.CHATWOOT_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ labels: [ $('Parse IA').first().json.atributos.tipo_atendimento ] }) }}",
+        "options": {}
+      },
+      "id": "aplicar_etiqueta",
+      "name": "Aplicar etiqueta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
         180
       ]
     },
@@ -203,8 +269,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        420,
-        180
+        860,
+        300
       ]
     },
     {
@@ -230,8 +296,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        640,
-        180
+        1080,
+        300
       ]
     }
   ],
@@ -304,6 +370,35 @@
       ]
     },
     "Salvar atributos": {
+      "main": [
+        [
+          {
+            "node": "Tipo definido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tipo definido?": {
+      "main": [
+        [
+          {
+            "node": "Aplicar etiqueta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Atualizar status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar etiqueta": {
       "main": [
         [
           {
